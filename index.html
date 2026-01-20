@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>F&B Inventory Manager</title>
+    <title>KitchenPro - F&B Inventory Manager (Online)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -11,14 +11,33 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
     <style>
+        /* Cleaner UI Tweaks */
         body { background-color: #f8fafc; font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+        .soft-shadow { box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05); }
+        
+        /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        @keyframes slideIn { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            body { background: white; height: auto !important; overflow: visible !important; }
+            #root, main, .flex, .h-screen { height: auto !important; overflow: visible !important; display: block !important; }
+            .sidebar { display: none !important; }
+            .card-print { box-shadow: none; border: 1px solid #ccc; break-inside: avoid; overflow: visible !important; }
+            .overflow-x-auto, .overflow-y-auto { overflow: visible !important; }
+        }
+
+        /* Toast Animation */
+        @keyframes slideInBottom {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -26,7 +45,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, writeBatch, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCaloFOXMSvi69fW3kNJ_R50dQoZYMIchY",
@@ -41,59 +60,77 @@
         const db = getFirestore(app);
         
         window.db = db;
-        window.fb = { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy };
+        window.fb = { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, writeBatch, query, orderBy };
+        console.log("Firebase Online Connected");
     </script>
 
     <script type="text/babel">
-        const { useState, useEffect, useContext, createContext } = React;
+        const { useState, useEffect, useMemo } = React;
 
-        // --- 1. TOAST SYSTEM (Sesuai Source) ---
-        const ToastContext = createContext();
-        
+        const CATEGORIES = ["Fresh Food", "Bahan Kering", "Frozen Food", "Dairy", "Sayuran", "Packaging", "Cleaning"];
+        const UNITS = ["kg", "gram", "liter", "ml", "pcs", "pack", "karton", "ikat", "butir"];
+
+        // --- Shared UI Components (Identik dengan Asli) ---
+
+        const Icon = ({ name, size = 20, className = "" }) => {
+            const ref = React.useRef(null);
+            React.useEffect(() => {
+                if (ref.current && window.lucide) {
+                    window.lucide.createIcons({ root: ref.current, nameAttr: 'data-lucide', attrs: { width: size, height: size, class: `lucide lucide-${name}` }});
+                }
+            }, [name, size]);
+            return <span ref={ref} className={`inline-flex items-center justify-center ${className}`}><i data-lucide={name}></i></span>;
+        };
+
+        const Card = ({ children, className = "" }) => (
+            <div className={`bg-white rounded-2xl shadow-[0_2px_12px_-2px_rgba(0,0,0,0.06)] border border-slate-100 p-6 ${className}`}>{children}</div>
+        );
+
+        const ToastContext = React.createContext();
         const ToastProvider = ({ children }) => {
             const [toasts, setToasts] = useState([]);
-
-            const addToast = (message, type = 'success') => {
+            const showToast = (message, type = 'success') => {
                 const id = Date.now();
                 setToasts(prev => [...prev, { id, message, type }]);
-                setTimeout(() => removeToast(id), 3000);
+                setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
             };
-
-            const removeToast = (id) => {
-                setToasts(prev => prev.filter(t => t.id !== id));
-            };
-
             return (
-                <ToastContext.Provider value={{ addToast }}>
+                <ToastContext.Provider value={{ showToast }}>
                     {children}
-                    <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2">
-                        {toasts.map(t => (
-                            <div key={t.id} className={`flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg text-white animate-[slideIn_0.3s_ease-out] ${t.type === 'error' ? 'bg-rose-500' : 'bg-emerald-600'}`}>
-                                <i data-lucide={t.type === 'error' ? 'alert-circle' : 'check-circle'}></i>
-                                <span className="text-sm font-medium">{t.message}</span>
+                    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
+                        {toasts.map(toast => (
+                            <div key={toast.id} className={`pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border animate-[slideInBottom_0.3s_ease-out] ${toast.type === 'success' ? 'bg-white border-emerald-100 text-emerald-800' : ''} ${toast.type === 'error' ? 'bg-white border-rose-100 text-rose-800' : ''} ${toast.type === 'info' ? 'bg-slate-800 text-white border-transparent' : ''}`} style={{ minWidth: '300px' }}>
+                                <div className={`p-1 rounded-full ${toast.type === 'success' ? 'bg-emerald-100' : toast.type === 'error' ? 'bg-rose-100' : 'bg-slate-700'}`}>
+                                    <Icon name={toast.type === 'success' ? 'check' : toast.type === 'error' ? 'alert-circle' : 'info'} size={16} />
+                                </div>
+                                <span className="text-sm font-medium">{toast.message}</span>
                             </div>
                         ))}
                     </div>
                 </ToastContext.Provider>
             );
         };
+        const useToast = () => React.useContext(ToastContext);
 
-        const useToast = () => useContext(ToastContext);
+        const Button = ({ onClick, children, variant = "primary", className = "", type = "button", disabled = false }) => {
+            const baseStyle = "px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed";
+            const variants = { primary: "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm hover:shadow-md", secondary: "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-gray-300", danger: "bg-rose-50 text-rose-600 hover:bg-rose-100 border border-transparent", outline: "border border-gray-300 text-gray-600 hover:bg-gray-50", ghost: "text-gray-500 hover:bg-gray-100 hover:text-gray-700" };
+            return <button type={type} onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${className}`}>{children}</button>;
+        };
 
-        // --- 2. SHARED COMPONENTS ---
-        const Icon = ({ name, size = 20, className }) => {
-            useEffect(() => { lucide.createIcons(); }, [name]);
-            return <i data-lucide={name} width={size} height={size} className={className}></i>;
+        const Badge = ({ children, type = "default" }) => {
+            const styles = { default: "bg-gray-100 text-gray-700 border border-gray-200", success: "bg-emerald-50 text-emerald-700 border border-emerald-100", warning: "bg-amber-50 text-amber-700 border border-amber-100", danger: "bg-rose-50 text-rose-700 border border-rose-100", info: "bg-blue-50 text-blue-700 border border-blue-100" };
+            return <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${styles[type]}`}>{children}</span>;
         };
 
         const Modal = ({ isOpen, onClose, title, children }) => {
             if (!isOpen) return null;
             return (
-                <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-[fadeIn_0.2s]">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden">
-                        <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50">
-                            <h3 className="font-bold text-gray-800">{title}</h3>
-                            <button onClick={onClose}><Icon name="x" size={20} className="text-gray-400 hover:text-gray-600"/></button>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-200">
+                        <div className="flex justify-between items-center p-6 border-b sticky top-0 bg-white z-10">
+                            <h3 className="text-lg font-bold text-gray-900">{title}</h3>
+                            <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full transition-colors"><Icon name="x" size={20}/></button>
                         </div>
                         <div className="p-6">{children}</div>
                     </div>
@@ -101,255 +138,641 @@
             );
         };
 
-        // --- 3. SUB-VIEWS (Forms & Settings) ---
-        
-        // ItemForm: Dipisah sesuai struktur source code asli
-        const ItemForm = ({ editingItem, handleSaveItem, setShowFormModal }) => {
-            return (
-                <form onSubmit={handleSaveItem} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Nama Bahan</label>
-                        <input name="name" defaultValue={editingItem?.name} className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 outline-none" required />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Kategori</label>
-                            <select name="category" defaultValue={editingItem?.category || "Fresh Food"} className="w-full border rounded-lg p-2.5">
-                                {["Fresh Food", "Bahan Kering", "Frozen Food", "Packaging", "Cleaning"].map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Satuan</label>
-                            <select name="unit" defaultValue={editingItem?.unit || "kg"} className="w-full border rounded-lg p-2.5">
-                                {["kg", "gram", "liter", "pcs", "pack", "ikat"].map(u => <option key={u} value={u}>{u}</option>)}
-                            </select>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Stok Saat Ini</label>
-                            <input name="stock" type="number" step="any" defaultValue={editingItem?.stock} className="w-full border rounded-lg p-2.5" required />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Min. Stok</label>
-                            <input name="minStock" type="number" step="any" defaultValue={editingItem?.minStock || 5} className="w-full border rounded-lg p-2.5" required />
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Harga per Satuan</label>
-                        <input name="price" type="number" defaultValue={editingItem?.price} className="w-full border rounded-lg p-2.5" required />
-                    </div>
-                    <div className="pt-2 flex gap-3">
-                        <button type="button" onClick={() => setShowFormModal(false)} className="flex-1 px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50 font-medium">Batal</button>
-                        <button type="submit" className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium">Simpan</button>
-                    </div>
-                </form>
-            );
+        const ChartComponent = ({ type, data, options, height = 250 }) => {
+            const chartRef = React.useRef(null);
+            const canvasRef = React.useRef(null);
+            React.useEffect(() => {
+                if (canvasRef.current) {
+                    if (chartRef.current) chartRef.current.destroy();
+                    const ctx = canvasRef.current.getContext('2d');
+                    chartRef.current = new Chart(ctx, { type, data, options: { responsive: true, maintainAspectRatio: false, ...options }});
+                }
+                return () => chartRef.current?.destroy();
+            }, [data, options, type]);
+            return <div style={{ height: height, width: '100%' }}><canvas ref={canvasRef}></canvas></div>;
         };
 
-        // SettingsView: Komponen yang muncul di snippet source asli
-        const SettingsView = () => {
+        // --- Helpers ---
+        const formatRupiah = (number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(number);
+        const formatDate = (dateString) => new Date(dateString).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        const generateId = () => { const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"; return Array.from({length: 4}, () => chars[Math.floor(Math.random() * chars.length)]).join(''); };
+
+
+        // --- FITUR KOMPONEN ASLI ANDA ---
+
+        // 1. LOGIN SCREEN
+        const LoginScreen = ({ onLogin }) => {
+            const [selectedRole, setSelectedRole] = useState(null);
+            const [pin, setPin] = useState("");
+            const [error, setError] = useState("");
+            const [showPin, setShowPin] = useState(false);
+            
+            const [selectedFeatures, setSelectedFeatures] = useState({
+                list: true, products: true, hpp: true, usage: true, restock: true, finance: true
+            });
+
+            const handleFeatureToggle = (key) => setSelectedFeatures(prev => ({ ...prev, [key]: !prev[key] }));
+
+            const handlePinSubmit = (e) => {
+                e.preventDefault();
+                const activeFeatures = Object.keys(selectedFeatures).filter(k => selectedFeatures[k]);
+                if (selectedRole === 'owner' && pin === '1234') onLogin('owner', activeFeatures);
+                else if (selectedRole === 'ceo' && pin === '0000') onLogin('ceo', activeFeatures);
+                else { setError("PIN Salah! Silakan coba lagi."); setPin(""); }
+            };
+
             return (
-                <div className="bg-white rounded-xl shadow-sm border p-6">
-                    <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><Icon name="settings"/> Pengaturan Aplikasi</h2>
-                    <div className="space-y-6">
-                        <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
-                            <h3 className="font-bold text-blue-800 mb-1">Status Database</h3>
-                            <p className="text-sm text-blue-600 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div> Terhubung ke Google Firebase (Cloud)</p>
+                <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-4">
+                    <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
+                        <div className="p-8 text-center border-b border-gray-100">
+                            <div className="inline-flex p-3 bg-emerald-100 text-emerald-600 rounded-xl mb-4"><Icon name="chef-hat" size={32} /></div>
+                            <h1 className="text-2xl font-bold text-gray-800">KitchenPro Login</h1>
+                            <p className="text-emerald-600 font-bold mt-2">● Online Cloud Database</p>
                         </div>
                         
-                        <div className="border-t pt-4">
-                            <h3 className="font-medium text-gray-900 mb-4">Profil Bisnis</h3>
-                            <div className="grid gap-4">
-                                <div>
-                                    <label className="block text-sm text-gray-500 mb-1">Nama Bisnis</label>
-                                    <input type="text" value="Dapur Racik Dinda" disabled className="w-full bg-gray-50 border rounded-lg p-2 text-gray-600"/>
-                                </div>
-                                <div>
-                                    <label className="block text-sm text-gray-500 mb-1">Alamat Outlet</label>
-                                    <input type="text" value="Medan, North Sumatra" disabled className="w-full bg-gray-50 border rounded-lg p-2 text-gray-600"/>
-                                </div>
+                        {!selectedRole ? (
+                            <div className="p-8 space-y-4">
+                                <p className="text-center text-sm text-gray-500 mb-4">Pilih otoritas akses:</p>
+                                <button onClick={() => setSelectedRole('owner')} className="w-full p-4 flex items-center gap-4 border-2 border-gray-100 hover:border-emerald-500 hover:bg-emerald-50 rounded-xl transition-all group text-left">
+                                    <div className="p-3 bg-blue-100 text-blue-600 rounded-full group-hover:scale-110 transition-transform"><Icon name="shield-check" /></div>
+                                    <div><div className="font-bold text-gray-800">Owner / Administrator</div><div className="text-xs text-gray-500">Akses Penuh (PIN: 1234)</div></div>
+                                </button>
+                                <button onClick={() => setSelectedRole('ceo')} className="w-full p-4 flex items-center gap-4 border-2 border-gray-100 hover:border-emerald-500 hover:bg-emerald-50 rounded-xl transition-all group text-left">
+                                    <div className="p-3 bg-purple-100 text-purple-600 rounded-full group-hover:scale-110 transition-transform"><Icon name="user-check" /></div>
+                                    <div><div className="font-bold text-gray-800">Staff / Operator</div><div className="text-xs text-gray-500">Akses Terbatas (PIN: 0000)</div></div>
+                                </button>
                             </div>
-                        </div>
-                        
-                        <div className="border-t pt-4">
-                            <button onClick={() => alert("Fitur Backup otomatis aktif di Firebase.")} className="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm flex items-center gap-2"><Icon name="database"/> Backup Data Sekarang</button>
-                        </div>
+                        ) : (
+                            <div className="p-8">
+                                <button onClick={() => { setSelectedRole(null); setError(""); setPin(""); }} className="text-sm text-gray-500 flex items-center gap-1 mb-6 hover:text-emerald-600"><Icon name="arrow-left" size={16} /> Kembali</button>
+                                <h2 className="text-xl font-bold text-center mb-6">Masukan PIN {selectedRole === 'owner' ? 'Owner' : 'Staff'}</h2>
+
+                                <form onSubmit={handlePinSubmit} className="space-y-4">
+                                    <div className="relative">
+                                        <input type={showPin ? "text" : "password"} autoFocus maxLength={4} className="w-full text-center text-3xl tracking-[1em] font-bold p-4 border-2 border-gray-200 rounded-xl focus:border-emerald-500 outline-none transition-colors" value={pin} onChange={e => { setPin(e.target.value.replace(/[^0-9]/g, '')); setError(""); }} placeholder="••••" />
+                                        <button type="button" onClick={() => setShowPin(!showPin)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-2"><Icon name={showPin ? "eye-off" : "eye"} size={20} /></button>
+                                    </div>
+                                    
+                                    {error && <div className="text-rose-500 text-sm text-center font-medium animate-pulse">{error}</div>}
+
+                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mt-4">
+                                        <div className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-2"><Icon name="sliders" size={12} /> Pilih Fitur Aktif</div>
+                                        <div className="space-y-2">
+                                            {[
+                                                { id: 'list', label: 'Stok Bahan', icon: 'package' },
+                                                { id: 'products', label: 'Menu Resep', icon: 'coffee' },
+                                                { id: 'hpp', label: 'Kalkulator HPP', icon: 'calculator' },
+                                                { id: 'usage', label: 'Pemakaian Bahan', icon: 'clipboard-minus' },
+                                                { id: 'restock', label: 'Pengadaan Stok', icon: 'shopping-cart' },
+                                                { id: 'finance', label: 'Keuangan', icon: 'banknote', restricted: selectedRole !== 'owner' }
+                                            ].map(feat => (
+                                                !feat.restricted && (
+                                                    <label key={feat.id} className="flex items-center gap-3 cursor-pointer group">
+                                                        <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedFeatures[feat.id] ? 'bg-emerald-500 border-emerald-500' : 'bg-white border-slate-300'}`}>
+                                                            {selectedFeatures[feat.id] && <Icon name="check" size={12} className="text-white" />}
+                                                        </div>
+                                                        <input type="checkbox" className="hidden" checked={selectedFeatures[feat.id]} onChange={() => handleFeatureToggle(feat.id)} />
+                                                        <span className={`text-sm ${selectedFeatures[feat.id] ? 'text-slate-700 font-medium' : 'text-slate-400'}`}>{feat.label}</span>
+                                                    </label>
+                                                )
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <Button type="submit" className="w-full justify-center py-3 text-lg mt-4">Masuk Sistem</Button>
+                                </form>
+                            </div>
+                        )}
+
+                        <div className="bg-gray-50 p-4 text-center text-xs text-gray-400">&copy; 2025 KitchenPro Inventory System v2.0</div>
                     </div>
                 </div>
             );
         };
 
-        // --- 4. MAIN APPLICATION ---
-        function KitchenPro() {
-            const { addToast } = useToast();
-            const [view, setView] = useState('dashboard');
-            const [inventory, setInventory] = useState([]);
-            const [products, setProducts] = useState([]);
-            const [loading, setLoading] = useState(true);
-            
-            // Modal States
-            const [showFormModal, setShowFormModal] = useState(false);
-            const [editingItem, setEditingItem] = useState(null);
+        // 2. INVENTORY LIST
+        const InventoryList = ({ inventory, products, searchTerm, setSearchTerm, user, canEdit, setEditingItem, setShowFormModal, handleDelete, updateStockInDB, recordUsageInDB, usageLog, showToast, formatRupiah, setView }) => {
+            const [filterMenuId, setFilterMenuId] = useState("all");
+            const [opnameItem, setOpnameItem] = useState(null);
+            const [opnameActual, setOpnameActual] = useState("");
+            const [showColMenu, setShowColMenu] = useState(false);
+            const [cols, setCols] = useState({ category: true, price: true, stock: true, status: true, action: true });
 
-            // Fetch Firebase
-            useEffect(() => {
-                if(!window.fb) return;
-                const unsubInv = window.fb.onSnapshot(window.fb.collection(window.db, "inventory"), s => {
-                    setInventory(s.docs.map(d => ({id: d.id, ...d.data()})));
-                });
-                const unsubProd = window.fb.onSnapshot(window.fb.collection(window.db, "products"), s => {
-                    setProducts(s.docs.map(d => ({id: d.id, ...d.data()})));
-                    setLoading(false);
-                });
-                return () => { unsubInv(); unsubProd(); };
-            }, []);
+            const toggleCol = (key) => setCols({ ...cols, [key]: !cols[key] });
 
-            // Handlers
-            const handleSaveItem = async (e) => {
-                e.preventDefault();
-                const fd = new FormData(e.target);
-                const payload = {
-                    name: fd.get('name'),
-                    category: fd.get('category'),
-                    stock: parseFloat(fd.get('stock')),
-                    unit: fd.get('unit'),
-                    price: parseFloat(fd.get('price')),
-                    minStock: parseFloat(fd.get('minStock'))
-                };
+            const filtered = useMemo(() => {
+                const term = searchTerm.toLowerCase();
+                const matchingProductIds = new Set();
+                let filteredInventory = inventory;
 
-                try {
-                    if (editingItem?.id) {
-                        await window.fb.updateDoc(window.fb.doc(window.db, "inventory", editingItem.id), payload);
-                        addToast("Item berhasil diperbarui", "success");
-                    } else {
-                        await window.fb.addDoc(window.fb.collection(window.db, "inventory"), payload);
-                        addToast("Item baru ditambahkan", "success");
+                if (filterMenuId !== "all") {
+                    const targetProduct = products.find(p => p.id === filterMenuId);
+                    if (targetProduct) {
+                        const ingredientIds = new Set(targetProduct.recipe.map(r => r.itemId));
+                        filteredInventory = filteredInventory.filter(i => ingredientIds.has(i.id));
                     }
-                    setShowFormModal(false);
-                } catch(err) {
-                    addToast("Terjadi kesalahan: " + err.message, "error");
                 }
-            };
 
-            const handleDelete = async (id) => {
-                if(confirm("Hapus item ini?")) {
-                    await window.fb.deleteDoc(window.fb.doc(window.db, "inventory", id));
-                    addToast("Item dihapus", "success");
+                if (term) {
+                    products.forEach(p => { if (p.name.toLowerCase().includes(term)) p.recipe.forEach(r => matchingProductIds.add(r.itemId)); });
+                    filteredInventory = filteredInventory.filter(i => i.name.toLowerCase().includes(term) || i.category.toLowerCase().includes(term) || matchingProductIds.has(i.id));
                 }
+                return filteredInventory;
+            }, [inventory, products, searchTerm, filterMenuId]);
+
+            const handleOpnameSubmit = (e) => {
+                e.preventDefault();
+                if (!opnameItem) return;
+                const actualStock = parseFloat(opnameActual);
+                if (isNaN(actualStock) || actualStock < 0) return showToast("Stok fisik tidak valid", 'error');
+
+                const variance = actualStock - opnameItem.stock;
+                if (variance === 0) { showToast("Stok sudah sesuai", 'info'); setOpnameItem(null); return; }
+
+                updateStockInDB(opnameItem.id, actualStock);
+                recordUsageInDB(opnameItem.id, Math.abs(variance), variance < 0 ? "Stok Opname (Loss)" : "Stok Opname (Surplus)");
+
+                showToast(`Stok Opname berhasil! Selisih: ${variance} ${opnameItem.unit}`, variance < 0 ? 'warning' : 'success');
+                setOpnameItem(null); setOpnameActual("");
             };
-
-            const formatRupiah = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n);
-
-            if(loading) return <div className="h-screen flex items-center justify-center text-emerald-600">Loading Cloud Data...</div>;
 
             return (
-                <div className="flex h-screen bg-slate-50">
-                    {/* Sidebar */}
-                    <aside className="w-64 bg-slate-900 text-white hidden md:flex flex-col">
+                <div className="space-y-6">
+                    <div className="flex flex-col md:flex-row gap-4 items-center no-print">
+                        <div className="relative flex-1 w-full md:w-auto">
+                            <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                            <input type="text" placeholder="Cari bahan, kategori, menu..." className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white shadow-sm" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                        </div>
+                        <select className="w-full md:w-auto p-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 bg-white shadow-sm text-sm" value={filterMenuId} onChange={e => setFilterMenuId(e.target.value)}>
+                            <option value="all">Semua Menu</option>
+                            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                        {canEdit && <Button onClick={() => { setEditingItem({}); setShowFormModal(true); }} className="w-full md:w-auto"><Icon name="plus" /> Tambah</Button>}
+                        <Button className="w-full md:w-auto bg-orange-500 hover:bg-orange-600" onClick={() => setView('usage')}><Icon name="clipboard-minus" /> Pakai</Button>
+                        <Button variant="secondary" onClick={() => window.print()} className="w-full md:w-auto"><Icon name="printer" /> Print</Button>
+                        
+                        <div className="relative w-full md:w-auto">
+                            <Button variant="secondary" onClick={() => setShowColMenu(!showColMenu)} className="w-full"><Icon name="columns" /> Kolom</Button>
+                            {showColMenu && (
+                                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border p-2 z-20 flex flex-col gap-1">
+                                    {Object.keys(cols).map(key => (
+                                        <label key={key} className="flex items-center gap-2 p-2 hover:bg-gray-50 cursor-pointer">
+                                            <input type="checkbox" checked={cols[key]} onChange={() => toggleCol(key)} className="rounded text-emerald-600" />
+                                            <span className="text-sm capitalize">{key}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden card-print">
+                        <div className="hidden md:block overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-50/50 text-slate-600 border-b border-slate-100">
+                                    <tr>
+                                        <th className="p-4 font-semibold">Nama Bahan</th>
+                                        {cols.category && <th className="p-4 font-semibold">Kategori</th>}
+                                        {cols.price && <th className="p-4 font-semibold no-print">Harga/Unit</th>}
+                                        {cols.stock && <th className="p-4 font-semibold text-center">Stok Fisik</th>}
+                                        <th className="p-4 font-semibold text-center hidden print-only">Cek Fisik</th>
+                                        {cols.status && <th className="p-4 font-semibold text-center no-print">Status</th>}
+                                        {cols.action && canEdit && <th className="p-4 font-semibold text-right no-print">Aksi</th>}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-50">
+                                    {filtered.map(item => (
+                                        <tr key={item.id} className="hover:bg-slate-50/50">
+                                            <td className="p-4"><div className="font-medium text-slate-900">{item.name}</div><div className="text-xs text-slate-400">ID: {item.id}</div></td>
+                                            {cols.category && <td className="p-4"><Badge>{item.category}</Badge></td>}
+                                            {cols.price && <td className="p-4 text-slate-600">{formatRupiah(item.price)} <span className="text-slate-400">/{item.unit}</span></td>}
+                                            {cols.stock && <td className="p-4 text-center"><span className={`font-bold text-lg ${item.stock <= item.minStock ? 'text-rose-600' : 'text-slate-700'}`}>{item.stock}</span> <span className="text-xs text-slate-400">{item.unit}</span></td>}
+                                            <td className="p-4 hidden print-only border-b border-slate-400"></td>
+                                            {cols.status && <td className="p-4 text-center no-print">{item.stock <= item.minStock ? <Badge type="danger">Low Stock</Badge> : <Badge type="success">Tersedia</Badge>}</td>}
+                                            {cols.action && canEdit && (
+                                                <td className="p-4 text-right no-print">
+                                                    <div className="flex justify-end gap-2">
+                                                        <Button variant="secondary" className="p-2 h-8 w-8" onClick={() => { setEditingItem(item); setShowFormModal(true); }}><Icon name="edit-2" size={14} /></Button>
+                                                        <Button variant="secondary" className="p-2 h-8 w-8 text-rose-600" onClick={() => handleDelete(item.id)}><Icon name="trash-2" size={14} /></Button>
+                                                        <Button variant="secondary" className="p-2 h-8 w-8 text-amber-600" onClick={() => { setOpnameItem(item); setOpnameActual(item.stock); }}><Icon name="scale" size={14} /></Button>
+                                                    </div>
+                                                </td>
+                                            )}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <Modal isOpen={!!opnameItem} onClose={() => setOpnameItem(null)} title="Stok Opname (Penyesuaian Fisik)">
+                        {opnameItem && (
+                            <form onSubmit={handleOpnameSubmit} className="space-y-4">
+                                <div className="bg-blue-50 p-4 rounded-lg flex justify-between"><span className="text-sm">Stok Sistem:</span><span className="font-bold">{opnameItem.stock} {opnameItem.unit}</span></div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Stok Fisik Aktual</label>
+                                    <div className="flex gap-2">
+                                        <input type="number" step="any" autoFocus required className="flex-1 p-3 border-2 border-emerald-500 rounded-lg text-lg font-bold" value={opnameActual} onChange={e => setOpnameActual(e.target.value)} />
+                                        <div className="flex items-center px-4 bg-gray-100 rounded-lg font-medium">{opnameItem.unit}</div>
+                                    </div>
+                                </div>
+                                <div className="pt-4 flex gap-2"><Button type="submit" className="flex-1">Simpan Opname</Button><Button variant="secondary" onClick={() => setOpnameItem(null)}>Batal</Button></div>
+                            </form>
+                        )}
+                    </Modal>
+                </div>
+            );
+        };
+
+        // 3. ITEM FORM
+        const ItemForm = ({ editingItem, handleSaveItem, setShowFormModal }) => {
+            const [form, setForm] = useState(editingItem.id ? editingItem : { name: '', category: 'Bahan Kering', stock: 0, unit: 'kg', price: 0, minStock: 5 });
+            const handleSubmit = (e) => { e.preventDefault(); handleSaveItem({ ...form, stock: parseFloat(form.stock), price: parseFloat(form.price), minStock: parseFloat(form.minStock) }); };
+
+            return (
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div><label className="block text-sm font-medium mb-1">Nama Bahan</label><input type="text" required className="w-full p-2 border rounded-lg" value={form.name} onChange={e => setForm({...form, name: e.target.value})} /></div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div><label className="block text-sm font-medium mb-1">Kategori</label><select className="w-full p-2 border rounded-lg" value={form.category} onChange={e => setForm({...form, category: e.target.value})}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></div>
+                        <div><label className="block text-sm font-medium mb-1">Satuan</label><select className="w-full p-2 border rounded-lg" value={form.unit} onChange={e => setForm({...form, unit: e.target.value})}>{UNITS.map(u => <option key={u}>{u}</option>)}</select></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div><label className="block text-sm font-medium mb-1">Stok Awal</label><input type="number" step="any" required className="w-full p-2 border rounded-lg" value={form.stock} onChange={e => setForm({...form, stock: e.target.value})} /></div>
+                        <div><label className="block text-sm font-medium mb-1">Min. Stok</label><input type="number" step="any" required className="w-full p-2 border rounded-lg" value={form.minStock} onChange={e => setForm({...form, minStock: e.target.value})} /></div>
+                    </div>
+                    <div><label className="block text-sm font-medium mb-1">Harga per Unit</label><input type="number" required className="w-full p-2 border rounded-lg" value={form.price} onChange={e => setForm({...form, price: e.target.value})} /></div>
+                    <div className="pt-4 flex gap-2"><Button type="submit" className="flex-1">Simpan</Button><Button variant="secondary" onClick={() => setShowFormModal(false)}>Batal</Button></div>
+                </form>
+            );
+        };
+
+        // 4. PRODUCT VIEW (RESEP)
+        const ProductView = ({ products, inventory, showToast, canEdit, calculateHPP, saveProductToDB, deleteProductFromDB, handleProduce }) => {
+            const [isEditing, setIsEditing] = useState(false);
+            const [tempProduct, setTempProduct] = useState(null);
+            const [productionQty, setProductionQty] = useState({});
+            const [searchTerm, setSearchTerm] = useState("");
+            const [expandedDetails, setExpandedDetails] = useState({});
+
+            const filteredProducts = useMemo(() => products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase())), [products, searchTerm]);
+
+            const stockUsage = useMemo(() => {
+                const usage = {};
+                products.forEach(p => {
+                    const qty = productionQty[p.id] || 0;
+                    if (qty > 0) p.recipe.forEach(r => { if(r.itemId) usage[r.itemId] = (usage[r.itemId] || 0) + (r.qty * qty); });
+                });
+                return usage;
+            }, [products, productionQty]);
+
+            const startEdit = (product) => { setTempProduct(JSON.parse(JSON.stringify(product || { id: "", name: "", overhead: 0, sellingPrice: 0, recipe: [] }))); setIsEditing(true); };
+
+            const saveProduct = () => {
+                if (!tempProduct.name) return showToast("Nama produk wajib diisi", 'error');
+                if (tempProduct.recipe.length === 0) return showToast("Minimal 1 bahan baku", 'error');
+                saveProductToDB(tempProduct);
+                setIsEditing(false);
+            };
+
+            const addIngredient = () => setTempProduct({ ...tempProduct, recipe: [{ itemId: inventory[0]?.id || "", qty: 1 }, ...tempProduct.recipe] });
+            const removeIngredient = (idx) => { const newRecipe = [...tempProduct.recipe]; newRecipe.splice(idx, 1); setTempProduct({ ...tempProduct, recipe: newRecipe }); };
+            const updateIngredient = (idx, field, value) => { const newRecipe = [...tempProduct.recipe]; newRecipe[idx] = { ...newRecipe[idx], [field]: value }; setTempProduct({ ...tempProduct, recipe: newRecipe }); };
+
+            const calcTempHPP = () => tempProduct?.recipe.reduce((total, ing) => { const item = inventory.find(i => i.id === ing.itemId); return total + (item ? item.price * ing.qty : 0); }, 0) + (parseFloat(tempProduct?.overhead) || 0);
+
+            if (isEditing) {
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+                        <Card className="w-full max-w-4xl mx-auto my-8 animate-in fade-in zoom-in duration-200 shadow-2xl">
+                            <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
+                                <h2 className="text-xl font-bold">{tempProduct.id ? "Edit Resep" : "Buat Resep Baru"}</h2>
+                                <button onClick={() => setIsEditing(false)}><Icon name="x" size={24} /></button>
+                            </div>
+                            <div className="space-y-6">
+                                <div><label className="block text-sm font-semibold mb-2">Nama Produk</label><input type="text" className="w-full p-3 border rounded-xl" value={tempProduct.name} onChange={e => setTempProduct({...tempProduct, name: e.target.value})} /></div>
+                                <div>
+                                    <div className="flex justify-between items-center mb-3"><label className="font-semibold">Bahan Baku</label><Button variant="secondary" onClick={addIngredient} className="text-xs"><Icon name="plus"/> Tambah</Button></div>
+                                    <div className="space-y-3">
+                                        {tempProduct.recipe.map((ing, idx) => {
+                                            const item = inventory.find(i => i.id === ing.itemId);
+                                            return (
+                                                <div key={idx} className="bg-white p-4 rounded-xl border flex gap-4 items-center">
+                                                    <select className="flex-1 p-2.5 border rounded-lg" value={ing.itemId} onChange={e => updateIngredient(idx, 'itemId', e.target.value)}>{inventory.map(item => (<option key={item.id} value={item.id}>{item.name} (@ {formatRupiah(item.price)})</option>))}</select>
+                                                    <input type="number" step="any" className="w-20 p-2.5 border rounded-lg" value={ing.qty} onChange={e => updateIngredient(idx, 'qty', parseFloat(e.target.value))} />
+                                                    <span className="text-sm w-12">{item?.unit}</span>
+                                                    <button onClick={() => removeIngredient(idx)} className="text-rose-500"><Icon name="trash-2" /></button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-6">
+                                    <div><label className="block text-sm font-medium mb-1">Harga Jual (Rp)</label><input type="number" className="w-full p-2.5 border rounded-lg" value={tempProduct.sellingPrice} onChange={e => setTempProduct({...tempProduct, sellingPrice: parseFloat(e.target.value)})} /></div>
+                                    <div><label className="block text-sm font-medium mb-1">Overhead (Rp)</label><input type="number" className="w-full p-2.5 border rounded-lg" value={tempProduct.overhead} onChange={e => setTempProduct({...tempProduct, overhead: parseFloat(e.target.value)})} /></div>
+                                </div>
+                                <div className="flex gap-4 pt-6 mt-6 border-t border-gray-100 bg-white sticky bottom-0 z-10 pb-2">
+                                    <Button onClick={saveProduct} className="flex-1">Simpan Resep</Button>
+                                    <Button variant="secondary" onClick={() => setIsEditing(false)}>Batal</Button>
+                                </div>
+                            </div>
+                        </Card>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex flex-col md:flex-row justify-between gap-4">
+                        <div className="relative flex-1 md:w-64"><Icon name="search" className="absolute left-3 top-3 text-gray-400" /><input type="text" placeholder="Cari menu..." className="w-full pl-10 pr-4 py-2 rounded-xl border bg-white" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div>
+                        {canEdit && <Button onClick={() => startEdit(null)}><Icon name="plus" /> Buat Menu</Button>}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                        {filteredProducts.map(product => {
+                            const hpp = calculateHPP(product);
+                            let maxStock = Infinity;
+                            product.recipe.forEach(ing => { const item = inventory.find(i => i.id === ing.itemId); if (item) { const max = Math.floor((item.stock - (stockUsage[ing.itemId]||0)) / ing.qty); if (max < maxStock) maxStock = max; } });
+                            if (maxStock === Infinity) maxStock = 0;
+
+                            return (
+                                <Card key={product.id} className="flex flex-col h-full">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <h3 className="font-bold text-lg">{product.name}</h3>
+                                        <div className="flex gap-1">
+                                            <button onClick={() => startEdit(product)} className="text-blue-600"><Icon name="edit-2"/></button>
+                                            {canEdit && <button onClick={() => deleteProductFromDB(product.id)} className="text-rose-600"><Icon name="trash-2"/></button>}
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-between py-2 border-y">
+                                        <span className="text-sm font-bold text-slate-600">HPP: {formatRupiah(hpp)}</span>
+                                        <span className="text-sm font-bold text-emerald-600">Jual: {formatRupiah(product.sellingPrice)}</span>
+                                    </div>
+                                    <div className="mt-4 flex gap-2">
+                                        <input type="number" min="1" className="w-16 p-2 border rounded-lg text-center" placeholder="Qty" value={productionQty[product.id] || ''} onChange={e => setProductionQty({...productionQty, [product.id]: parseInt(e.target.value)})} />
+                                        <Button onClick={() => handleProduce(product, productionQty[product.id] || 0)} className="flex-1">Produksi</Button>
+                                    </div>
+                                </Card>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        };
+
+        // 5. RESTOCK VIEW
+        const RestockView = ({ inventory, products, user, showToast, requests, setRequests, formatRupiah, formatDate, saveRequestToDB, updateRequestInDB, deleteRequestFromDB, realizeRequestItemInDB }) => {
+            const [activeTab, setActiveTab] = useState('new');
+            const [restockCart, setRestockCart] = useState({});
+            const [selectedRestockItems, setSelectedRestockItems] = useState(new Set());
+
+            useEffect(() => {
+                if (activeTab === 'new' && Object.keys(restockCart).length === 0) {
+                    const lowStock = {}; const newSelected = new Set();
+                    inventory.forEach(item => { if (item.stock <= item.minStock) { lowStock[item.id] = item.minStock * 2; newSelected.add(item.id); } });
+                    setRestockCart(lowStock); setSelectedRestockItems(newSelected);
+                }
+            }, [activeTab]);
+
+            const updateCart = (id, value) => { const val = parseFloat(value); setRestockCart(prev => ({ ...prev, [id]: val })); if (val > 0) setSelectedRestockItems(prev => new Set(prev).add(id)); };
+            const toggleItem = (itemId) => setSelectedRestockItems(prev => { const s = new Set(prev); s.has(itemId) ? s.delete(itemId) : s.add(itemId); return s; });
+
+            const handleSaveRequest = () => {
+                const itemsToOrder = inventory.filter(i => selectedRestockItems.has(i.id) && parseFloat(restockCart[i.id]) > 0).map(item => ({ id: item.id, name: item.name, unit: item.unit, price: item.price, qty: parseFloat(restockCart[item.id]), isRealized: false }));
+                if (itemsToOrder.length === 0) return showToast("Pilih minimal 1 barang", 'error');
+                
+                const totalEst = itemsToOrder.reduce((acc, i) => acc + (i.qty * i.price), 0);
+                saveRequestToDB({ requester: user.name, items: itemsToOrder, totalEst, status: 'pending' });
+                setRestockCart({}); setSelectedRestockItems(new Set()); setActiveTab('list');
+            };
+
+            return (
+                <div className="h-[calc(100vh-100px)] flex flex-col">
+                    <div className="flex justify-end mb-6 bg-gray-100 p-1 rounded-lg w-max ml-auto">
+                        <button onClick={() => setActiveTab('new')} className={`px-4 py-2 rounded-md ${activeTab === 'new' ? 'bg-white shadow-sm' : ''}`}>Buat Baru</button>
+                        <button onClick={() => setActiveTab('list')} className={`px-4 py-2 rounded-md ${activeTab === 'list' ? 'bg-white shadow-sm' : ''}`}>Daftar Request</button>
+                    </div>
+
+                    {activeTab === 'new' ? (
+                        <div className="flex-1 overflow-auto bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div className="p-4 bg-emerald-50 font-bold flex justify-between"><span>Pilih Bahan Restock</span><Button onClick={handleSaveRequest}>Kirim Request</Button></div>
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-gray-100"><tr><th className="p-4">Cek</th><th className="p-4">Bahan</th><th className="p-4">Stok</th><th className="p-4">Qty Order</th></tr></thead>
+                                <tbody>
+                                    {inventory.map(item => (
+                                        <tr key={item.id} className="border-b">
+                                            <td className="p-4"><input type="checkbox" checked={selectedRestockItems.has(item.id)} onChange={() => toggleItem(item.id)} /></td>
+                                            <td className="p-4 font-medium">{item.name}</td>
+                                            <td className="p-4">{item.stock} {item.unit}</td>
+                                            <td className="p-4"><input type="number" className="border rounded p-1 w-20" value={restockCart[item.id] || ''} onChange={e => updateCart(item.id, e.target.value)} /></td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {requests.map(req => (
+                                <Card key={req.id} className={req.status === 'done' ? 'opacity-70 bg-gray-50' : ''}>
+                                    <div className="flex justify-between font-bold mb-2"><span>{formatDate(req.date)} (by {req.requester})</span><Badge type={req.status === 'done' ? 'success' : 'warning'}>{req.status}</Badge></div>
+                                    <ul className="space-y-2">
+                                        {req.items.map((item, idx) => (
+                                            <li key={idx} className="flex justify-between items-center p-2 bg-white rounded border">
+                                                <div className="flex items-center gap-2">
+                                                    {user.role === 'ceo' ? <input type="checkbox" checked={item.isRealized} onChange={() => realizeRequestItemInDB(req.id, item.id, item.qty)} /> : item.isRealized && <Icon name="check-circle" size={14}/>}
+                                                    <span className={item.isRealized ? "line-through text-gray-400" : ""}>{item.name}</span>
+                                                </div>
+                                                <span>{item.qty} {item.unit}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </Card>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // 6. HPP CALCULATOR
+        const HPPCalculator = ({ inventory, formatRupiah }) => {
+            const [components, setComponents] = useState([]);
+            const [overhead, setOverhead] = useState(0);
+            const [margin, setMargin] = useState(30);
+
+            const totalBase = components.reduce((sum, c) => sum + (c.price * c.qty), 0) + parseFloat(overhead || 0);
+            const sellingPrice = totalBase / (1 - (margin / 100));
+
+            return (
+                <Card className="max-w-2xl mx-auto">
+                    <h3 className="text-xl font-bold mb-6">Kalkulator HPP</h3>
+                    <div className="space-y-4 mb-6">
+                        {components.map((comp, idx) => (
+                            <div key={idx} className="flex gap-2">
+                                <select className="flex-1 p-2 border rounded" value={comp.itemId} onChange={e => { const item = inventory.find(i=>i.id===e.target.value); const n=[...components]; n[idx]={...comp, itemId: e.target.value, price: item.price}; setComponents(n); }}>
+                                    <option value="">Pilih Bahan</option>
+                                    {inventory.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                                </select>
+                                <input type="number" className="w-20 p-2 border rounded" value={comp.qty} onChange={e => { const n=[...components]; n[idx].qty=e.target.value; setComponents(n); }} placeholder="Qty"/>
+                            </div>
+                        ))}
+                        <Button onClick={() => setComponents([...components, {itemId:'', qty:1, price:0}])}><Icon name="plus"/> Tambah Bahan</Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 border-t pt-4">
+                        <input type="number" placeholder="Overhead" className="p-2 border rounded" value={overhead} onChange={e=>setOverhead(e.target.value)} />
+                        <input type="number" placeholder="Margin %" className="p-2 border rounded" value={margin} onChange={e=>setMargin(e.target.value)} />
+                    </div>
+                    <div className="mt-6 p-4 bg-slate-900 text-white rounded-xl text-center">
+                        <div className="text-sm text-gray-400">Saran Harga Jual</div>
+                        <div className="text-3xl font-bold text-emerald-400">{formatRupiah(sellingPrice)}</div>
+                        <div className="text-xs mt-2">Modal: {formatRupiah(totalBase)}</div>
+                    </div>
+                </Card>
+            );
+        };
+
+        // 7. FINANCE VIEW
+        const FinanceView = ({ usageLog, formatRupiah }) => {
+            const stats = useMemo(() => {
+                let revenue = 0, cogs = 0, waste = 0;
+                usageLog.forEach(l => { if (l.reason && l.reason.includes("Produksi")) { revenue += (l.revenue || 0); cogs += l.cost; } else { waste += l.cost; } });
+                return { revenue, cogs, waste, net: revenue - cogs - waste };
+            }, [usageLog]);
+
+            return (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <Card className="bg-emerald-50"><div className="text-sm font-bold text-emerald-800">Pendapatan</div><div className="text-2xl font-bold text-emerald-600">{formatRupiah(stats.revenue)}</div></Card>
+                        <Card className="bg-blue-50"><div className="text-sm font-bold text-blue-800">HPP (Modal)</div><div className="text-2xl font-bold text-blue-600">{formatRupiah(stats.cogs)}</div></Card>
+                        <Card className="bg-rose-50"><div className="text-sm font-bold text-rose-800">Waste/Rugi</div><div className="text-2xl font-bold text-rose-600">{formatRupiah(stats.waste)}</div></Card>
+                        <Card className="bg-indigo-50"><div className="text-sm font-bold text-indigo-800">Laba Bersih</div><div className="text-2xl font-bold text-indigo-600">{formatRupiah(stats.net)}</div></Card>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- MAIN APP (FIREBASE INTEGRATION) ---
+        function KitchenPro() {
+            const { showToast } = useToast();
+            const [view, setView] = useState('dashboard');
+            const [user, setUser] = useState(null);
+            const [inventory, setInventory] = useState([]);
+            const [products, setProducts] = useState([]);
+            const [usageLog, setUsageLog] = useState([]);
+            const [requests, setRequests] = useState([]);
+            const [loading, setLoading] = useState(true);
+
+            // UI Control States
+            const [searchTerm, setSearchTerm] = useState("");
+            const [showFormModal, setShowFormModal] = useState(false);
+            const [editingItem, setEditingItem] = useState(null);
+            const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+            // FIREBASE REAL-TIME LISTENERS
+            useEffect(() => {
+                if(!window.fb) return;
+                const db = window.db;
+                
+                const unsubInv = window.fb.onSnapshot(window.fb.collection(db, "inventory"), s => setInventory(s.docs.map(d => ({id: d.id, ...d.data()}))));
+                const unsubProd = window.fb.onSnapshot(window.fb.collection(db, "products"), s => setProducts(s.docs.map(d => ({id: d.id, ...d.data()}))));
+                const unsubLog = window.fb.onSnapshot(window.fb.query(window.fb.collection(db, "usageLog"), window.fb.orderBy("date", "desc")), s => setUsageLog(s.docs.map(d => ({id: d.id, ...d.data()}))));
+                const unsubReq = window.fb.onSnapshot(window.fb.collection(db, "requests"), s => { setRequests(s.docs.map(d => ({id: d.id, ...d.data()}))); setLoading(false); });
+
+                return () => { unsubInv(); unsubProd(); unsubLog(); unsubReq(); };
+            }, []);
+
+            const handleLogin = (role) => { setUser({ role, name: role === 'owner' ? 'Owner' : 'Staff' }); setView('dashboard'); };
+            const canEdit = user?.role === 'owner';
+
+            // FIREBASE CRUD HANDLERS
+            const saveItemToDB = async (item) => {
+                try {
+                    if (item.id) await window.fb.updateDoc(window.fb.doc(window.db, "inventory", item.id), item);
+                    else await window.fb.addDoc(window.fb.collection(window.db, "inventory"), item);
+                    setShowFormModal(false); showToast("Berhasil disimpan", "success");
+                } catch(e) { showToast("Error: " + e.message, "error"); }
+            };
+
+            const deleteItemFromDB = async (id) => { if(confirm("Hapus permanen?")) await window.fb.deleteDoc(window.fb.doc(window.db, "inventory", id)); };
+
+            const saveProductToDB = async (prod) => {
+                try {
+                    if(prod.id) await window.fb.updateDoc(window.fb.doc(window.db, "products", prod.id), prod);
+                    else await window.fb.addDoc(window.fb.collection(window.db, "products"), prod);
+                } catch(e) { showToast("Error", "error"); }
+            };
+
+            const deleteProductFromDB = async (id) => { if(confirm("Hapus Menu?")) await window.fb.deleteDoc(window.fb.doc(window.db, "products", id)); };
+
+            const handleProduce = async (product, qty) => {
+                if (qty <= 0) return;
+                const batch = window.fb.writeBatch(window.db);
+                product.recipe.forEach(r => {
+                    const item = inventory.find(i => i.id === r.itemId);
+                    if(item) batch.update(window.fb.doc(window.db, "inventory", r.itemId), { stock: item.stock - (r.qty * qty) });
+                });
+                batch.set(window.fb.doc(window.fb.collection(window.db, "usageLog")), { date: new Date().toISOString(), itemId: product.id, itemName: `[Produksi] ${product.name}`, amount: qty, unit: "porsi", reason: "Produksi", cost: 0, revenue: (product.sellingPrice||0) * qty });
+                await batch.commit();
+                showToast("Produksi dicatat!", "success");
+            };
+
+            const updateStockInDB = async (id, newStock) => await window.fb.updateDoc(window.fb.doc(window.db, "inventory", id), { stock: newStock });
+            const recordUsageInDB = async (itemId, amount, reason) => {
+                const item = inventory.find(i => i.id === itemId);
+                await window.fb.addDoc(window.fb.collection(window.db, "usageLog"), { date: new Date().toISOString(), itemId, itemName: item.name, amount, unit: item.unit, reason, cost: item.price * amount });
+            };
+
+            const saveRequestToDB = async (req) => await window.fb.addDoc(window.fb.collection(window.db, "requests"), { ...req, date: new Date().toISOString() });
+            const realizeRequestItemInDB = async (reqId, itemId, qty) => {
+                const req = requests.find(r => r.id === reqId);
+                const updatedItems = req.items.map(i => i.id === itemId ? { ...i, isRealized: true } : i);
+                const batch = window.fb.writeBatch(window.db);
+                batch.update(window.fb.doc(window.db, "requests", reqId), { items: updatedItems, status: updatedItems.every(i => i.isRealized) ? 'done' : 'pending' });
+                const invItem = inventory.find(i => i.id === itemId);
+                batch.update(window.fb.doc(window.db, "inventory", itemId), { stock: invItem.stock + qty });
+                await batch.commit();
+                showToast("Barang masuk dikonfirmasi", "success");
+            };
+
+            if (!user) return <LoginScreen onLogin={handleLogin} />;
+            if (loading) return <div className="h-screen flex items-center justify-center">Loading Cloud Data...</div>;
+
+            return (
+                <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
+                    {/* SIDEBAR ASLI */}
+                    <aside className={`w-64 bg-slate-900 text-white flex-col hidden md:flex shadow-xl z-20`}>
                         <div className="p-6 border-b border-slate-800 flex items-center gap-3">
-                            <div className="bg-emerald-500 p-2 rounded-lg"><Icon name="chef-hat" size={24}/></div>
+                            <Icon name="chef-hat" size={24} className="text-emerald-500" />
                             <span className="font-bold text-lg">KitchenPro</span>
                         </div>
-                        <nav className="flex-1 p-4 space-y-2">
-                            <button onClick={()=>setView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view==='dashboard'?'bg-emerald-600':'hover:bg-slate-800 text-slate-400'}`}><Icon name="layout-grid" size={20}/> Dashboard</button>
-                            <button onClick={()=>setView('inventory')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view==='inventory'?'bg-emerald-600':'hover:bg-slate-800 text-slate-400'}`}><Icon name="package" size={20}/> Stok Bahan</button>
-                            <button onClick={()=>setView('settings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view==='settings'?'bg-emerald-600':'hover:bg-slate-800 text-slate-400'}`}><Icon name="settings" size={20}/> Pengaturan</button>
+                        <nav className="p-4 space-y-2 flex-1">
+                            {[ {id:'dashboard', icon:'layout-grid'}, {id:'list', icon:'package'}, {id:'products', icon:'coffee'}, {id:'hpp', icon:'calculator'}, {id:'restock', icon:'shopping-cart'}, {id:'finance', icon:'banknote'} ].map(m => (
+                                <button key={m.id} onClick={() => setView(m.id)} className={`w-full flex items-center gap-3 p-3 rounded-xl ${view === m.id ? 'bg-emerald-600' : 'text-slate-400 hover:bg-slate-800'}`}>
+                                    <Icon name={m.icon} /> <span className="capitalize">{m.id}</span>
+                                </button>
+                            ))}
                         </nav>
+                        <div className="p-4 border-t border-slate-800"><button onClick={() => setUser(null)} className="w-full flex gap-3 text-rose-400"><Icon name="log-out"/> Logout</button></div>
                     </aside>
 
-                    {/* Main Content */}
-                    <main className="flex-1 overflow-auto p-8">
-                        <div className="max-w-6xl mx-auto">
-                            {/* Dashboard */}
-                            {view === 'dashboard' && (
-                                <div className="space-y-6 animate-[fadeIn_0.5s]">
-                                    <h2 className="text-2xl font-bold text-gray-800">Dashboard Overview</h2>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                        <div className="bg-white p-6 rounded-xl shadow-sm border border-emerald-100">
-                                            <div className="text-sm text-gray-500 mb-1">Total Aset</div>
-                                            <div className="text-2xl font-bold text-emerald-600">{formatRupiah(inventory.reduce((a,b)=>a+(b.stock*b.price),0))}</div>
-                                        </div>
-                                        <div className="bg-white p-6 rounded-xl shadow-sm border border-blue-100">
-                                            <div className="text-sm text-gray-500 mb-1">Total SKU</div>
-                                            <div className="text-2xl font-bold text-blue-600">{inventory.length} Item</div>
-                                        </div>
-                                        <div className="bg-white p-6 rounded-xl shadow-sm border border-rose-100">
-                                            <div className="text-sm text-gray-500 mb-1">Stok Menipis</div>
-                                            <div className="text-2xl font-bold text-rose-600">{inventory.filter(i=>i.stock<=i.minStock).length} Item</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Inventory */}
-                            {view === 'inventory' && (
-                                <div className="space-y-6 animate-[fadeIn_0.5s]">
-                                    <div className="flex justify-between items-center">
-                                        <h2 className="text-2xl font-bold text-gray-800">Manajemen Stok</h2>
-                                        <button onClick={() => { setEditingItem(null); setShowFormModal(true); }} className="px-4 py-2 bg-emerald-600 text-white rounded-lg flex items-center gap-2 hover:bg-emerald-700 shadow-sm"><Icon name="plus"/> Tambah Bahan</button>
-                                    </div>
-                                    
-                                    <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-                                        <table className="w-full text-left text-sm">
-                                            <thead className="bg-gray-50 text-gray-500 uppercase">
-                                                <tr>
-                                                    <th className="p-4">Nama Item</th>
-                                                    <th className="p-4">Kategori</th>
-                                                    <th className="p-4">Stok</th>
-                                                    <th className="p-4">Harga</th>
-                                                    <th className="p-4 text-right">Aksi</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y">
-                                                {inventory.map(item => (
-                                                    <tr key={item.id} className="hover:bg-slate-50 transition">
-                                                        <td className="p-4 font-medium text-gray-900">{item.name}</td>
-                                                        <td className="p-4"><span className="px-2 py-1 bg-gray-100 rounded text-xs text-gray-600 font-medium">{item.category}</span></td>
-                                                        <td className="p-4">
-                                                            <span className={`font-bold ${item.stock <= item.minStock ? 'text-rose-600' : 'text-gray-700'}`}>{item.stock} {item.unit}</span>
-                                                        </td>
-                                                        <td className="p-4 text-gray-500">{formatRupiah(item.price)}</td>
-                                                        <td className="p-4 text-right flex justify-end gap-2">
-                                                            <button onClick={() => { setEditingItem(item); setShowFormModal(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><Icon name="edit-2" size={18}/></button>
-                                                            <button onClick={() => handleDelete(item.id)} className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg"><Icon name="trash-2" size={18}/></button>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                        {inventory.length === 0 && <div className="p-8 text-center text-gray-400">Belum ada data stok.</div>}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Settings View */}
-                            {view === 'settings' && <SettingsView />}
-                        </div>
+                    {/* MAIN CONTENT */}
+                    <main className="flex-1 overflow-auto p-4 md:p-8">
+                        {view === 'dashboard' && <div className="grid grid-cols-3 gap-4"><Card className="bg-emerald-50 text-2xl font-bold">Total Item: {inventory.length}</Card></div>}
+                        {view === 'list' && <InventoryList inventory={inventory} products={products} searchTerm={searchTerm} setSearchTerm={setSearchTerm} user={user} canEdit={canEdit} setEditingItem={setEditingItem} setShowFormModal={setShowFormModal} handleDelete={deleteItemFromDB} updateStockInDB={updateStockInDB} recordUsageInDB={recordUsageInDB} usageLog={usageLog} showToast={showToast} formatRupiah={formatRupiah} setView={setView} />}
+                        {view === 'products' && <ProductView products={products} inventory={inventory} showToast={showToast} canEdit={canEdit} calculateHPP={(p) => p.recipe.reduce((tot, ing) => { const i = inventory.find(x=>x.id===ing.itemId); return tot + (i?i.price*ing.qty:0); }, 0)} saveProductToDB={saveProductToDB} deleteProductFromDB={deleteProductFromDB} handleProduce={handleProduce} />}
+                        {view === 'restock' && <RestockView inventory={inventory} products={products} user={user} showToast={showToast} requests={requests} setRequests={setRequests} formatRupiah={formatRupiah} formatDate={formatDate} saveRequestToDB={saveRequestToDB} realizeRequestItemInDB={realizeRequestItemInDB} />}
+                        {view === 'hpp' && <HPPCalculator inventory={inventory} formatRupiah={formatRupiah} />}
+                        {view === 'finance' && <FinanceView usageLog={usageLog} formatRupiah={formatRupiah} />}
                     </main>
 
-                    {/* Modal Form */}
-                    <Modal isOpen={showFormModal} onClose={() => setShowFormModal(false)} title={editingItem?.id ? "Edit Bahan" : "Tambah Bahan Baru"}>
-                        <ItemForm 
-                            editingItem={editingItem} 
-                            handleSaveItem={handleSaveItem} 
-                            setShowFormModal={setShowFormModal} 
-                        />
+                    <Modal isOpen={showFormModal} onClose={() => setShowFormModal(false)} title={editingItem?.id ? "Edit" : "Tambah"}>
+                        <ItemForm editingItem={editingItem} handleSaveItem={saveItemToDB} setShowFormModal={setShowFormModal} />
                     </Modal>
                 </div>
             );
         }
 
-        // --- ROOT RENDER (With ToastProvider) ---
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        function App() {
-            return (
-                <ToastProvider>
-                    <KitchenPro />
-                </ToastProvider>
-            );
-        }
-        root.render(<App />);
+        root.render(<ToastProvider><KitchenPro /></ToastProvider>);
     </script>
 </body>
 </html>
