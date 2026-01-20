@@ -13,12 +13,11 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <style>
-        body { background-color: #f8fafc; font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        body { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
+        ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         @media print { .no-print { display: none !important; } .print-only { display: block !important; } }
-        @keyframes slideInBottom { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
     </style>
 </head>
 <body>
@@ -28,7 +27,6 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, writeBatch, query, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-        // CONFIG DARI USER
         const firebaseConfig = {
             apiKey: "AIzaSyCaloFOXMSvi69fW3kNJ_R50dQoZYMIchY",
             authDomain: "drdkitchen-db.firebaseapp.com",
@@ -40,565 +38,349 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
-
-        // Expose to Global Window for React
         window.db = db;
         window.fb = { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, writeBatch, query, orderBy, getDocs };
-        
-        console.log("Firebase Connected: drdkitchen-db");
     </script>
 
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
+        const formatRupiah = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n);
+        const formatDate = (d) => d ? new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : "-";
 
-        // --- Mock Data for Auto-Seeding ---
-        const initialData = [
-            { name: "Beras Pandan Wangi", category: "Bahan Kering", stock: 25, unit: "kg", price: 14000, minStock: 10 },
-            { name: "Daging Sapi Slice", category: "Fresh Food", stock: 5, unit: "kg", price: 120000, minStock: 8 },
-            { name: "Minyak Goreng", category: "Bahan Kering", stock: 12, unit: "liter", price: 18000, minStock: 10 },
-            { name: "Paper Cup 12oz", category: "Packaging", stock: 800, unit: "pcs", price: 500, minStock: 200 },
-            { name: "Kopi Arabica Blend", category: "Bahan Kering", stock: 3, unit: "kg", price: 250000, minStock: 5 },
-            { name: "Susu UHT Full Cream", category: "Dairy", stock: 24, unit: "liter", price: 19000, minStock: 12 },
-        ];
-
-        const CATEGORIES = ["Fresh Food", "Bahan Kering", "Frozen Food", "Dairy", "Sayuran", "Packaging", "Cleaning"];
-        const UNITS = ["kg", "gram", "liter", "ml", "pcs", "pack", "karton", "ikat", "butir"];
-
-        // --- Components ---
-
-        const Icon = ({ name, size = 20, className = "" }) => {
+        // --- COMPONENTS ---
+        const Icon = ({ name, size = 20 }) => {
             const ref = React.useRef(null);
-            React.useEffect(() => {
-                if (ref.current && window.lucide) {
-                    window.lucide.createIcons({
-                        root: ref.current,
-                        nameAttr: 'data-lucide',
-                        attrs: { width: size, height: size, class: `lucide lucide-${name}` }
-                    });
-                }
-            }, [name, size]);
-            return <span ref={ref} className={`inline-flex items-center justify-center ${className}`}><i data-lucide={name}></i></span>;
+            React.useEffect(() => { if (ref.current && window.lucide) window.lucide.createIcons({ root: ref.current, nameAttr: 'data-lucide', attrs: { width: size, height: size, class: `lucide lucide-${name}` } }); }, [name, size]);
+            return <span ref={ref} className="inline-flex"><i data-lucide={name}></i></span>;
         };
-
-        const Card = ({ children, className = "" }) => (
-            <div className={`bg-white rounded-2xl shadow-[0_2px_12px_-2px_rgba(0,0,0,0.06)] border border-slate-100 p-6 ${className}`}>{children}</div>
-        );
-
-        const Button = ({ onClick, children, variant = "primary", className = "", type = "button", disabled = false }) => {
-            const baseStyle = "px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed";
-            const variants = {
-                primary: "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm hover:shadow-md",
-                secondary: "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-gray-300",
-                danger: "bg-rose-50 text-rose-600 hover:bg-rose-100 border border-transparent",
-                outline: "border border-gray-300 text-gray-600 hover:bg-gray-50"
-            };
-            return <button type={type} onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${className}`}>{children}</button>;
+        const Card = ({ children, className = "" }) => <div className={`bg-white rounded-2xl shadow-sm border border-slate-100 p-6 ${className}`}>{children}</div>;
+        const Button = ({ onClick, children, variant = "primary", className = "" }) => {
+            const base = "px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all";
+            const v = { primary: "bg-emerald-600 text-white hover:bg-emerald-700", secondary: "bg-white border hover:bg-slate-50", danger: "bg-rose-50 text-rose-600 hover:bg-rose-100" };
+            return <button onClick={onClick} className={`${base} ${v[variant]} ${className}`}>{children}</button>;
         };
+        const Badge = ({ children, type = "default" }) => <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${type === 'danger' ? 'bg-rose-100 text-rose-700' : type === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>{children}</span>;
 
-        const Badge = ({ children, type = "default" }) => {
-            const styles = {
-                default: "bg-gray-100 text-gray-700 border border-gray-200",
-                success: "bg-emerald-50 text-emerald-700 border border-emerald-100",
-                warning: "bg-amber-50 text-amber-700 border border-amber-100",
-                danger: "bg-rose-50 text-rose-700 border border-rose-100"
-            };
-            return <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${styles[type]}`}>{children}</span>;
-        };
+        // --- SUB-VIEWS (Restored Features) ---
 
-        // --- Helpers ---
-        const formatRupiah = (number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(number);
-        const formatDate = (dateString) => {
-            if(!dateString) return "-";
-            return new Date(dateString).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-        };
+        const FinanceView = ({ logs, requests }) => {
+            const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
+            const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
+            const [opsCost, setOpsCost] = useState(0);
 
-        // --- MAIN APP ---
-        function KitchenPro() {
-            // Local UI State
-            const [view, setView] = useState('dashboard');
-            const [user, setUser] = useState(JSON.parse(localStorage.getItem('fnb_user_role')) || null);
-            
-            // Data State (Synced with Firebase)
-            const [inventory, setInventory] = useState([]);
-            const [products, setProducts] = useState([]);
-            const [usageLog, setUsageLog] = useState([]);
-            const [requests, setRequests] = useState([]);
-            
-            // Loading State
-            const [loading, setLoading] = useState(true);
-
-            // Modals & Forms
-            const [showFormModal, setShowFormModal] = useState(false);
-            const [editingItem, setEditingItem] = useState(null);
-
-            // --- FIREBASE SYNC (The "Heart" of the App) ---
-            useEffect(() => {
-                if (!window.fb || !window.db) return;
-
-                const { collection, onSnapshot, query, orderBy } = window.fb;
-                const db = window.db;
-
-                // 1. Sync Inventory
-                const unsubInv = onSnapshot(collection(db, "inventory"), (snap) => {
-                    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                    setInventory(data);
-                    
-                    // Auto-Seed if empty
-                    if (data.length === 0 && !localStorage.getItem('seeded')) {
-                        initialData.forEach(item => window.fb.addDoc(collection(db, "inventory"), item));
-                        localStorage.setItem('seeded', 'true');
-                    }
+            const stats = useMemo(() => {
+                const filtered = logs.filter(l => l.date >= startDate && l.date <= endDate + "T23:59");
+                let rev = 0, cogs = 0, waste = 0;
+                filtered.forEach(l => {
+                    if (l.revenue) { rev += l.revenue; cogs += l.cost; } 
+                    else { waste += l.cost; }
                 });
+                return { rev, cogs, waste, net: rev - cogs - waste - opsCost };
+            }, [logs, startDate, endDate, opsCost]);
 
-                // 2. Sync Products
-                const unsubProd = onSnapshot(collection(db, "products"), (snap) => {
-                    setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-                });
-
-                // 3. Sync Logs (Ordered by date)
-                const qLogs = query(collection(db, "usageLog"), orderBy("date", "desc"));
-                const unsubLog = onSnapshot(qLogs, (snap) => {
-                    setUsageLog(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-                });
-
-                // 4. Sync Requests
-                const unsubReq = onSnapshot(collection(db, "requests"), (snap) => {
-                    setRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-                    setLoading(false);
-                });
-
-                return () => { unsubInv(); unsubProd(); unsubLog(); unsubReq(); };
-            }, []);
-
-            // --- HANDLERS (CRUD to Firebase) ---
-
-            const handleLogin = (role) => {
-                const userData = { role, name: role === 'owner' ? 'Owner' : 'CEO' };
-                setUser(userData);
-                localStorage.setItem('fnb_user_role', JSON.stringify(userData));
-            };
-
-            const handleLogout = () => {
-                setUser(null);
-                localStorage.removeItem('fnb_user_role');
-            };
-
-            // Inventory Handlers
-            const handleSaveItem = async (item) => {
-                const { addDoc, updateDoc, doc } = window.fb;
-                const db = window.db;
-                
-                try {
-                    const payload = {
-                        name: item.name,
-                        category: item.category,
-                        stock: parseFloat(item.stock),
-                        unit: item.unit,
-                        price: parseFloat(item.price),
-                        minStock: parseFloat(item.minStock)
-                    };
-
-                    if (item.id) {
-                        await updateDoc(doc(db, "inventory", item.id), payload);
-                    } else {
-                        await addDoc(collection(db, "inventory"), payload);
-                    }
-                    setShowFormModal(false);
-                    setEditingItem(null);
-                } catch (e) { alert("Error saving: " + e.message); }
-            };
-
-            const handleDeleteItem = async (id) => {
-                if(!confirm("Hapus item ini permanen?")) return;
-                try {
-                    await window.fb.deleteDoc(window.fb.doc(window.db, "inventory", id));
-                } catch (e) { alert("Error delete: " + e.message); }
-            };
-
-            // Usage Handlers
-            const handleRecordUsage = async (itemId, amount, reason) => {
-                const item = inventory.find(i => i.id === itemId);
-                if (!item) return;
-
-                const qty = parseFloat(amount);
-                if (item.stock < qty) return alert("Stok tidak cukup!");
-
-                try {
-                    const db = window.db;
-                    const { addDoc, updateDoc, doc, collection } = window.fb;
-
-                    // 1. Kurangi Stok
-                    await updateDoc(doc(db, "inventory", itemId), {
-                        stock: item.stock - qty
-                    });
-
-                    // 2. Catat Log
-                    await addDoc(collection(db, "usageLog"), {
-                        date: new Date().toISOString(),
-                        itemId: item.id,
-                        itemName: item.name,
-                        amount: qty,
-                        unit: item.unit,
-                        reason: reason,
-                        cost: qty * item.price
-                    });
-                    
-                    alert("Pemakaian berhasil dicatat!");
-                } catch (e) { alert("Gagal mencatat: " + e.message); }
-            };
-
-            // Production Handler
-            const handleProduce = async (product, qty) => {
-                if (qty <= 0) return alert("Jumlah minimal 1");
-                const db = window.db;
-                
-                // Cek Stok dulu
-                const missing = [];
-                product.recipe.forEach(ing => {
-                    const item = inventory.find(i => i.id === ing.itemId);
-                    if (!item || item.stock < (ing.qty * qty)) missing.push(item?.name || "??");
-                });
-
-                if (missing.length > 0) return alert("Bahan kurang: " + missing.join(", "));
-                if (!confirm(`Produksi ${qty} ${product.name}?`)) return;
-
-                try {
-                    const batch = window.fb.writeBatch(db);
-
-                    // 1. Kurangi semua bahan
-                    product.recipe.forEach(ing => {
-                        const item = inventory.find(i => i.id === ing.itemId);
-                        const itemRef = window.fb.doc(db, "inventory", ing.itemId);
-                        const newStock = item.stock - (ing.qty * qty);
-                        batch.update(itemRef, { stock: newStock });
-                    });
-
-                    // 2. Commit batch update stok
-                    await batch.commit();
-
-                    // 3. Catat Log Produksi
-                    const hpp = product.recipe.reduce((total, ing) => {
-                        const item = inventory.find(i => i.id === ing.itemId);
-                        return total + (item ? item.price * ing.qty : 0);
-                    }, 0) + (parseFloat(product.overhead) || 0);
-
-                    await window.fb.addDoc(window.fb.collection(db, "usageLog"), {
-                        date: new Date().toISOString(),
-                        itemId: product.id,
-                        itemName: `[Produksi] ${product.name}`,
-                        amount: qty,
-                        unit: "porsi",
-                        reason: "Produksi",
-                        cost: hpp * qty,
-                        revenue: (product.sellingPrice || 0) * qty
-                    });
-
-                    alert("Produksi sukses!");
-                } catch (e) { alert("Gagal produksi: " + e.message); }
-            };
-
-            // --- UI SUB-COMPONENTS ---
-
-            if (!user) {
-                return (
-                    <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
-                        <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md text-center">
-                            <h1 className="text-2xl font-bold mb-2">KitchenPro Login</h1>
-                            <p className="text-gray-500 mb-6">Database: drdkitchen-db (Online)</p>
-                            <div className="space-y-3">
-                                <button onClick={() => handleLogin('owner')} className="w-full p-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-bold">Masuk sebagai Owner</button>
-                                <button onClick={() => handleLogin('ceo')} className="w-full p-3 border border-gray-200 rounded-xl hover:bg-gray-50 font-bold">Masuk sebagai Staff</button>
-                            </div>
-                        </div>
-                    </div>
-                );
-            }
-
-            if (loading) return <div className="h-screen flex items-center justify-center text-emerald-600 font-bold animate-pulse">Menghubungkan ke Database...</div>;
-
-            return (
-                <div className="flex h-screen overflow-hidden">
-                    {/* Sidebar Simple */}
-                    <div className="w-64 bg-slate-900 text-white flex flex-col hidden md:flex">
-                        <div className="p-6 font-bold text-xl flex items-center gap-2 border-b border-gray-700">
-                            <Icon name="chef-hat" /> KitchenPro
-                        </div>
-                        <nav className="flex-1 p-4 space-y-2">
-                            <NavBtn active={view==='dashboard'} onClick={()=>setView('dashboard')} icon="layout-grid" label="Dashboard" />
-                            <NavBtn active={view==='list'} onClick={()=>setView('list')} icon="package" label="Stok Bahan" />
-                            <NavBtn active={view==='products'} onClick={()=>setView('products')} icon="coffee" label="Menu Resep" />
-                            <NavBtn active={view==='usage'} onClick={()=>setView('usage')} icon="clipboard-minus" label="Catat Pakai" />
-                        </nav>
-                        <div className="p-4 border-t border-gray-700">
-                            <button onClick={handleLogout} className="flex items-center gap-2 text-rose-400 hover:text-white"><Icon name="log-out" size={16}/> Logout</button>
-                        </div>
-                    </div>
-
-                    {/* Main Content */}
-                    <main className="flex-1 overflow-auto bg-slate-50 relative">
-                        {/* Mobile Header */}
-                        <div className="md:hidden p-4 bg-white border-b flex justify-between items-center">
-                            <span className="font-bold">KitchenPro</span>
-                            <div className="flex gap-2">
-                                <button onClick={()=>setView('dashboard')} className="p-2 bg-gray-100 rounded"><Icon name="layout-grid"/></button>
-                                <button onClick={()=>setView('list')} className="p-2 bg-gray-100 rounded"><Icon name="package"/></button>
-                                <button onClick={handleLogout} className="p-2 text-rose-500"><Icon name="log-out"/></button>
-                            </div>
-                        </div>
-
-                        <div className="p-6 max-w-7xl mx-auto">
-                            {/* VIEWS */}
-                            {view === 'dashboard' && <DashboardStats inventory={inventory} usageLog={usageLog} />}
-                            
-                            {view === 'list' && (
-                                <InventoryView 
-                                    inventory={inventory} 
-                                    onEdit={(item) => { setEditingItem(item); setShowFormModal(true); }}
-                                    onDelete={handleDeleteItem}
-                                    user={user}
-                                    onAdd={() => { setEditingItem({}); setShowFormModal(true); }}
-                                />
-                            )}
-
-                            {view === 'usage' && (
-                                <UsageForm inventory={inventory} onSubmit={handleRecordUsage} logs={usageLog} />
-                            )}
-
-                            {view === 'products' && (
-                                <ProductManager 
-                                    products={products} 
-                                    inventory={inventory} 
-                                    onProduce={handleProduce}
-                                    user={user}
-                                />
-                            )}
-                        </div>
-                    </main>
-
-                    {/* Modal Form Inventory */}
-                    {showFormModal && (
-                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-                            <div className="bg-white p-6 rounded-xl w-full max-w-lg">
-                                <h3 className="font-bold text-lg mb-4">{editingItem.id ? 'Edit Item' : 'Tambah Item Baru'}</h3>
-                                <form onSubmit={(e) => {
-                                    e.preventDefault();
-                                    const formData = new FormData(e.target);
-                                    handleSaveItem({
-                                        id: editingItem.id,
-                                        name: formData.get('name'),
-                                        category: formData.get('category'),
-                                        stock: formData.get('stock'),
-                                        unit: formData.get('unit'),
-                                        price: formData.get('price'),
-                                        minStock: formData.get('minStock')
-                                    });
-                                }} className="space-y-4">
-                                    <input name="name" defaultValue={editingItem.name} placeholder="Nama Bahan" className="w-full p-2 border rounded" required />
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <select name="category" defaultValue={editingItem.category || CATEGORIES[0]} className="p-2 border rounded">
-                                            {CATEGORIES.map(c=><option key={c}>{c}</option>)}
-                                        </select>
-                                        <select name="unit" defaultValue={editingItem.unit || UNITS[0]} className="p-2 border rounded">
-                                            {UNITS.map(u=><option key={u}>{u}</option>)}
-                                        </select>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <input name="stock" type="number" step="any" defaultValue={editingItem.stock} placeholder="Stok Awal" className="p-2 border rounded" required />
-                                        <input name="minStock" type="number" step="any" defaultValue={editingItem.minStock || 5} placeholder="Min Stok" className="p-2 border rounded" required />
-                                    </div>
-                                    <input name="price" type="number" defaultValue={editingItem.price} placeholder="Harga per Unit" className="w-full p-2 border rounded" required />
-                                    
-                                    <div className="flex gap-2 pt-2">
-                                        <Button type="submit" className="flex-1 justify-center">Simpan ke Cloud</Button>
-                                        <Button variant="secondary" onClick={() => setShowFormModal(false)}>Batal</Button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            );
-        }
-
-        // --- SUB COMPONENTS (Simplified for brevity) ---
-
-        const NavBtn = ({ active, onClick, icon, label }) => (
-            <button onClick={onClick} className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all ${active ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
-                <Icon name={icon} size={20} /> <span className="font-medium">{label}</span>
-            </button>
-        );
-
-        const DashboardStats = ({ inventory, usageLog }) => {
-            const totalAsset = inventory.reduce((a, b) => a + (b.stock * b.price), 0);
-            const lowStock = inventory.filter(i => i.stock <= i.minStock).length;
-            
             return (
                 <div className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <Card className="bg-emerald-50 border-emerald-100">
-                            <div className="text-emerald-800 font-bold text-lg">Total Aset</div>
-                            <div className="text-2xl font-bold text-emerald-600">{formatRupiah(totalAsset)}</div>
-                        </Card>
-                        <Card className="bg-blue-50 border-blue-100">
-                            <div className="text-blue-800 font-bold text-lg">Total Item</div>
-                            <div className="text-2xl font-bold text-blue-600">{inventory.length} SKU</div>
-                        </Card>
-                        <Card className={lowStock > 0 ? "bg-rose-50 border-rose-100" : "bg-gray-50"}>
-                            <div className="text-gray-800 font-bold text-lg">Perlu Restock</div>
-                            <div className={`text-2xl font-bold ${lowStock > 0 ? "text-rose-600" : "text-gray-600"}`}>{lowStock} Item</div>
-                        </Card>
-                    </div>
+                    <Card>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-bold">Laporan Keuangan</h3>
+                            <div className="flex gap-2">
+                                <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} className="border p-2 rounded" />
+                                <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} className="border p-2 rounded" />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                            <div className="p-4 bg-emerald-50 rounded-xl"><div className="text-sm text-emerald-800">Pendapatan</div><div className="text-2xl font-bold text-emerald-600">{formatRupiah(stats.rev)}</div></div>
+                            <div className="p-4 bg-blue-50 rounded-xl"><div className="text-sm text-blue-800">HPP (Modal)</div><div className="text-2xl font-bold text-blue-600">{formatRupiah(stats.cogs)}</div></div>
+                            <div className="p-4 bg-rose-50 rounded-xl"><div className="text-sm text-rose-800">Waste (Terbuang)</div><div className="text-2xl font-bold text-rose-600">{formatRupiah(stats.waste)}</div></div>
+                            <div className="p-4 bg-indigo-50 rounded-xl"><div className="text-sm text-indigo-800">Laba Bersih</div><div className="text-2xl font-bold text-indigo-600">{formatRupiah(stats.net)}</div></div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="font-bold">Biaya Operasional Lain:</span>
+                            <input type="number" value={opsCost} onChange={e=>setOpsCost(Number(e.target.value))} className="border p-2 rounded w-40" placeholder="Listrik, Gaji, dll" />
+                        </div>
+                    </Card>
                 </div>
             );
         };
 
-        const InventoryView = ({ inventory, onEdit, onDelete, onAdd, user }) => (
-            <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                    <h2 className="text-2xl font-bold text-slate-800">Stok Bahan Baku</h2>
-                    {user.role === 'owner' && <Button onClick={onAdd}><Icon name="plus"/> Tambah</Button>}
-                </div>
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-slate-50 text-slate-700">
-                            <tr>
-                                <th className="p-4">Nama</th>
-                                <th className="p-4">Kategori</th>
-                                <th className="p-4 text-center">Stok</th>
-                                <th className="p-4">Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {inventory.map(item => (
-                                <tr key={item.id} className="hover:bg-slate-50">
-                                    <td className="p-4 font-medium">
-                                        {item.name}
-                                        <div className="text-xs text-gray-400">{formatRupiah(item.price)}/{item.unit}</div>
-                                    </td>
-                                    <td className="p-4"><Badge>{item.category}</Badge></td>
-                                    <td className="p-4 text-center">
-                                        <span className={`font-bold text-lg ${item.stock <= item.minStock ? 'text-rose-600' : 'text-slate-700'}`}>
-                                            {item.stock} <span className="text-xs font-normal">{item.unit}</span>
-                                        </span>
-                                    </td>
-                                    <td className="p-4 flex gap-2">
-                                        <button onClick={()=>onEdit(item)} className="p-2 text-blue-600 hover:bg-blue-50 rounded"><Icon name="edit-2" size={16}/></button>
-                                        {user.role === 'owner' && <button onClick={()=>onDelete(item.id)} className="p-2 text-rose-600 hover:bg-rose-50 rounded"><Icon name="trash-2" size={16}/></button>}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        );
-
-        const UsageForm = ({ inventory, onSubmit, logs }) => {
-            const [selId, setSelId] = useState("");
-            const [qty, setQty] = useState("");
-            const [reason, setReason] = useState("Rusak / Basi");
-
-            return (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Card>
-                        <h3 className="font-bold text-lg mb-4">Catat Pemakaian Manual</h3>
-                        <form onSubmit={(e)=>{ e.preventDefault(); onSubmit(selId, qty, reason); setQty(""); }} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-bold mb-1">Pilih Bahan</label>
-                                <select className="w-full p-2 border rounded" value={selId} onChange={e=>setSelId(e.target.value)} required>
-                                    <option value="">-- Pilih --</option>
-                                    {inventory.map(i=><option key={i.id} value={i.id}>{i.name} (Sisa: {i.stock})</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-bold mb-1">Jumlah</label>
-                                <input type="number" step="any" className="w-full p-2 border rounded" value={qty} onChange={e=>setQty(e.target.value)} required />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-bold mb-1">Alasan</label>
-                                <select className="w-full p-2 border rounded" value={reason} onChange={e=>setReason(e.target.value)}>
-                                    <option>Rusak / Basi</option>
-                                    <option>Tumpah</option>
-                                    <option>Tester / Sampling</option>
-                                    <option>Lainnya</option>
-                                </select>
-                            </div>
-                            <Button type="submit" className="w-full justify-center">Simpan</Button>
-                        </form>
-                    </Card>
-                    
-                    <Card>
-                        <h3 className="font-bold text-lg mb-4">Riwayat Log</h3>
-                        <div className="overflow-y-auto h-[400px]">
-                            <table className="w-full text-sm">
-                                <thead className="text-left text-gray-500 bg-gray-50 sticky top-0">
-                                    <tr><th className="p-2">Waktu</th><th className="p-2">Item</th><th className="p-2">Ket</th></tr>
-                                </thead>
-                                <tbody>
-                                    {logs.map(log => (
-                                        <tr key={log.id} className="border-b">
-                                            <td className="p-2 text-xs text-gray-400">{formatDate(log.date)}</td>
-                                            <td className="p-2">
-                                                <div className="font-medium">{log.itemName}</div>
-                                                <div className="text-rose-600 font-bold text-xs">-{log.amount} {log.unit}</div>
-                                            </td>
-                                            <td className="p-2"><Badge>{log.reason}</Badge></td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </Card>
-                </div>
-            )
-        };
-
-        const ProductManager = ({ products, inventory, onProduce, user }) => {
-            // Simplifikasi: Hanya menampilkan list dan tombol produksi.
-            // Fitur Tambah Resep bisa dikembangkan lebih lanjut dengan pola yang sama (addDoc ke 'products')
-            const [prodQty, setProdQty] = useState({});
-
-            const handleNewProduct = async () => {
-                const name = prompt("Nama Menu Baru:");
-                if(!name) return;
-                const price = prompt("Harga Jual:");
-                // Untuk resep, idealnya pakai UI kompleks. Ini versi cepat:
-                // Membuat produk kosong dulu, nanti diedit (fitur edit perlu diaktifkan full code)
+        const RestockView = ({ inventory, requests, user }) => {
+            const [cart, setCart] = useState({});
+            
+            const handleOrder = async () => {
+                const items = inventory.filter(i => cart[i.id] > 0).map(i => ({
+                    id: i.id, name: i.name, qty: parseFloat(cart[i.id]), price: i.price, unit: i.unit, isRealized: false
+                }));
+                if(items.length === 0) return alert("Pilih item dulu!");
+                
                 try {
-                    await window.fb.addDoc(window.fb.collection(window.db, "products"), {
-                        name, sellingPrice: parseInt(price), recipe: [], overhead: 0
+                    await window.fb.addDoc(window.fb.collection(window.db, "requests"), {
+                        date: new Date().toISOString(), requester: user.name, items, status: 'pending',
+                        totalEst: items.reduce((a,b)=>a+(b.qty*b.price),0)
                     });
-                } catch(e) { alert(e.message) }
+                    setCart({}); alert("Request terkirim!");
+                } catch(e) { alert(e.message); }
+            };
+
+            const toggleRealize = async (req, itemIndex) => {
+                if(user.role !== 'ceo') return alert("Hanya CEO yg bisa validasi");
+                const newItems = [...req.items];
+                const item = newItems[itemIndex];
+                if(item.isRealized) return; // Already done
+
+                if(!confirm(`Validasi barang masuk: ${item.name} (${item.qty})? Stok akan bertambah.`)) return;
+
+                const db = window.db;
+                const batch = window.fb.writeBatch(db);
+                
+                // 1. Update Request status locally to batch
+                item.isRealized = true;
+                const allDone = newItems.every(i => i.isRealized);
+                batch.update(window.fb.doc(db, "requests", req.id), { items: newItems, status: allDone ? 'done' : 'pending' });
+
+                // 2. Update Inventory Stock
+                const invItem = inventory.find(i => i.id === item.id);
+                if(invItem) {
+                    batch.update(window.fb.doc(db, "inventory", item.id), { stock: Number(invItem.stock) + Number(item.qty) });
+                }
+
+                await batch.commit();
             };
 
             return (
-                <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                        <h2 className="text-2xl font-bold">Daftar Menu</h2>
-                        {user.role === 'owner' && <Button onClick={handleNewProduct}><Icon name="plus"/> Menu Baru</Button>}
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {products.map(prod => (
-                            <Card key={prod.id} className="flex flex-col justify-between">
-                                <div>
-                                    <h3 className="font-bold text-lg">{prod.name}</h3>
-                                    <div className="text-emerald-600 font-bold">{formatRupiah(prod.sellingPrice)}</div>
-                                    <div className="text-xs text-gray-500 mt-2">{prod.recipe.length} Bahan Baku</div>
+                <div className="space-y-6">
+                    <Card>
+                        <h3 className="font-bold text-lg mb-4">Buat Request Stok Baru</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
+                            {inventory.map(item => (
+                                <div key={item.id} className={`p-3 border rounded-lg ${item.stock <= item.minStock ? 'bg-rose-50 border-rose-200' : 'bg-white'}`}>
+                                    <div className="flex justify-between font-bold text-sm"><span>{item.name}</span> <span className={item.stock<=item.minStock?'text-rose-600':''}>{item.stock}</span></div>
+                                    <div className="flex items-center gap-2 mt-2">
+                                        <input type="number" placeholder="Jml Beli" className="w-full border p-1 rounded" 
+                                            value={cart[item.id] || ''} onChange={e=>setCart({...cart, [item.id]: e.target.value})} />
+                                        <span className="text-xs text-gray-500">{item.unit}</span>
+                                    </div>
                                 </div>
-                                <div className="mt-4 pt-4 border-t flex gap-2">
-                                    <input 
-                                        type="number" 
-                                        placeholder="Qty" 
-                                        className="w-16 border rounded p-1 text-center"
-                                        onChange={(e) => setProdQty({...prodQty, [prod.id]: e.target.value})}
-                                    />
-                                    <Button onClick={() => onProduce(prod, prodQty[prod.id] || 0)} className="flex-1 justify-center text-sm">
-                                        <Icon name="check-circle" size={16}/> Produksi
-                                    </Button>
+                            ))}
+                        </div>
+                        <div className="mt-4 pt-4 border-t">
+                            <Button onClick={handleOrder}><Icon name="send"/> Kirim Request</Button>
+                        </div>
+                    </Card>
+
+                    <div className="space-y-4">
+                        <h3 className="font-bold text-lg">Daftar Request</h3>
+                        {requests.sort((a,b)=>b.date.localeCompare(a.date)).map(req => (
+                            <Card key={req.id} className={req.status==='done'?'opacity-70 bg-gray-50':''}>
+                                <div className="flex justify-between items-start mb-2">
+                                    <div><div className="font-bold">{formatDate(req.date)}</div><div className="text-xs text-gray-500">by {req.requester}</div></div>
+                                    <Badge type={req.status==='done'?'success':'warning'}>{req.status}</Badge>
+                                </div>
+                                <div className="space-y-1">
+                                    {req.items.map((item, idx) => (
+                                        <div key={idx} className="flex justify-between text-sm p-1 border-b border-dashed">
+                                            <div className="flex items-center gap-2">
+                                                <button onClick={()=>toggleRealize(req, idx)} disabled={item.isRealized} className={`w-4 h-4 rounded border ${item.isRealized?'bg-emerald-500 border-emerald-500':'bg-white'}`}></button>
+                                                <span className={item.isRealized?'line-through text-gray-400':''}>{item.name}</span>
+                                            </div>
+                                            <div>{item.qty} {item.unit}</div>
+                                        </div>
+                                    ))}
                                 </div>
                             </Card>
                         ))}
                     </div>
+                </div>
+            );
+        };
+
+        const HPPCalculator = ({ inventory }) => {
+            const [rows, setRows] = useState([{id:1, itemId:'', qty:0}]);
+            const [overhead, setOverhead] = useState(0);
+            const [margin, setMargin] = useState(30);
+
+            const totalBase = rows.reduce((sum, r) => {
+                const item = inventory.find(i=>i.id===r.itemId);
+                return sum + (item ? item.price * r.qty : 0);
+            }, 0) + Number(overhead);
+            
+            const sellingPrice = totalBase / (1 - (margin/100));
+
+            return (
+                <Card>
+                    <h3 className="font-bold text-lg mb-4">Kalkulator HPP & Harga Jual</h3>
+                    <div className="space-y-2 mb-4">
+                        {rows.map((r, i) => (
+                            <div key={r.id} className="flex gap-2">
+                                <select className="flex-1 border p-2 rounded" value={r.itemId} onChange={e=>{const n=[...rows];n[i].itemId=e.target.value;setRows(n)}}>
+                                    <option value="">- Pilih Bahan -</option>
+                                    {inventory.map(item=><option key={item.id} value={item.id}>{item.name} (@{item.price})</option>)}
+                                </select>
+                                <input type="number" className="w-20 border p-2 rounded" placeholder="Qty" value={r.qty} onChange={e=>{const n=[...rows];n[i].qty=e.target.value;setRows(n)}} />
+                                <button onClick={()=>setRows(rows.filter((_,x)=>x!==i))} className="text-rose-500"><Icon name="x"/></button>
+                            </div>
+                        ))}
+                        <Button variant="secondary" onClick={()=>setRows([...rows, {id:Date.now(), itemId:'', qty:0}])}><Icon name="plus"/> Bahan</Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 border-t pt-4">
+                        <div>
+                            <label className="text-xs font-bold block">Biaya Lain (Packaging/Gas)</label>
+                            <input type="number" className="border p-2 rounded w-full" value={overhead} onChange={e=>setOverhead(e.target.value)} />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold block">Target Margin (%)</label>
+                            <input type="number" className="border p-2 rounded w-full" value={margin} onChange={e=>setMargin(e.target.value)} />
+                        </div>
+                    </div>
+                    <div className="mt-6 bg-slate-50 p-4 rounded-xl text-center">
+                        <div className="text-sm text-gray-500">Saran Harga Jual</div>
+                        <div className="text-3xl font-bold text-emerald-600">{formatRupiah(sellingPrice)}</div>
+                        <div className="text-xs text-gray-400">Modal: {formatRupiah(totalBase)} | Profit: {formatRupiah(sellingPrice - totalBase)}</div>
+                    </div>
+                </Card>
+            );
+        };
+
+        // --- MAIN APP ---
+        function KitchenPro() {
+            const [view, setView] = useState('dashboard');
+            const [user, setUser] = useState(JSON.parse(localStorage.getItem('fnb_user_role')) || null);
+            const [inventory, setInventory] = useState([]);
+            const [products, setProducts] = useState([]);
+            const [logs, setLogs] = useState([]);
+            const [requests, setRequests] = useState([]);
+
+            useEffect(() => {
+                if (!window.fb || !window.db) return;
+                const db = window.db;
+                const unsubInv = window.fb.onSnapshot(window.fb.collection(db, "inventory"), s => setInventory(s.docs.map(d=>({id:d.id, ...d.data()}))));
+                const unsubProd = window.fb.onSnapshot(window.fb.collection(db, "products"), s => setProducts(s.docs.map(d=>({id:d.id, ...d.data()}))));
+                const unsubLogs = window.fb.onSnapshot(window.fb.query(window.fb.collection(db, "usageLog"), window.fb.orderBy("date", "desc")), s => setLogs(s.docs.map(d=>({id:d.id, ...d.data()}))));
+                const unsubReq = window.fb.onSnapshot(window.fb.collection(db, "requests"), s => setRequests(s.docs.map(d=>({id:d.id, ...d.data()}))));
+                return () => { unsubInv(); unsubProd(); unsubLogs(); unsubReq(); };
+            }, []);
+
+            const handleLogin = (role) => { const u={role, name:role==='owner'?'Owner':'CEO'}; setUser(u); localStorage.setItem('fnb_user_role', JSON.stringify(u)); };
+            
+            if(!user) return (
+                <div className="h-screen flex items-center justify-center bg-slate-900">
+                    <div className="bg-white p-8 rounded-2xl w-full max-w-sm text-center">
+                        <h1 className="text-2xl font-bold mb-6">KitchenPro Login</h1>
+                        <button onClick={()=>handleLogin('owner')} className="w-full bg-emerald-600 text-white p-3 rounded-lg font-bold mb-3">Owner (Akses Penuh)</button>
+                        <button onClick={()=>handleLogin('ceo')} className="w-full border p-3 rounded-lg font-bold">Staff / CEO</button>
+                    </div>
+                </div>
+            );
+
+            const menuItems = [
+                { id: 'dashboard', label: 'Dashboard', icon: 'layout-grid', role: 'all' },
+                { id: 'list', label: 'Stok Bahan', icon: 'package', role: 'all' },
+                { id: 'products', label: 'Menu Resep', icon: 'coffee', role: 'all' },
+                { id: 'usage', label: 'Catat Pakai', icon: 'clipboard-minus', role: 'all' },
+                { id: 'restock', label: 'Restock', icon: 'shopping-cart', role: 'all' },
+                { id: 'hpp', label: 'Kalkulator', icon: 'calculator', role: 'all' },
+                { id: 'finance', label: 'Keuangan', icon: 'banknote', role: 'owner' },
+            ];
+
+            return (
+                <div className="flex h-screen bg-slate-50">
+                    <div className="w-64 bg-slate-900 text-white flex flex-col hidden md:flex">
+                        <div className="p-6 font-bold text-xl border-b border-slate-800 flex gap-2 items-center"><Icon name="chef-hat"/> KitchenPro</div>
+                        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+                            {menuItems.filter(m=>m.role==='all'||m.role===user.role).map(m => (
+                                <button key={m.id} onClick={()=>setView(m.id)} className={`w-full flex items-center gap-3 p-3 rounded-xl transition ${view===m.id?'bg-emerald-600 text-white':'text-slate-400 hover:bg-slate-800'}`}>
+                                    <Icon name={m.icon}/> {m.label}
+                                </button>
+                            ))}
+                        </nav>
+                        <div className="p-4 border-t border-slate-800"><button onClick={()=>{setUser(null); localStorage.removeItem('fnb_user_role');}} className="flex gap-2 text-rose-400"><Icon name="log-out"/> Logout</button></div>
+                    </div>
+                    
+                    <main className="flex-1 overflow-auto">
+                        <div className="md:hidden p-4 bg-white border-b flex justify-between">
+                            <span className="font-bold">KitchenPro</span>
+                            <div className="flex gap-2">
+                                <button onClick={()=>setView('dashboard')} className="p-2 bg-gray-100 rounded"><Icon name="layout-grid"/></button>
+                                <button onClick={()=>setView('usage')} className="p-2 bg-gray-100 rounded"><Icon name="clipboard-minus"/></button>
+                            </div>
+                        </div>
+
+                        <div className="p-6 max-w-7xl mx-auto">
+                            {/* DASHBOARD */}
+                            {view === 'dashboard' && (
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <Card className="bg-emerald-50"><div className="text-sm text-emerald-800">Total Aset</div><div className="text-2xl font-bold text-emerald-600">{formatRupiah(inventory.reduce((a,b)=>a+(b.stock*b.price),0))}</div></Card>
+                                    <Card className="bg-blue-50"><div className="text-sm text-blue-800">Menu Aktif</div><div className="text-2xl font-bold text-blue-600">{products.length} Menu</div></Card>
+                                    <Card className="bg-rose-50"><div className="text-sm text-rose-800">Perlu Restock</div><div className="text-2xl font-bold text-rose-600">{inventory.filter(i=>i.stock<=i.minStock).length} Item</div></Card>
+                                </div>
+                            )}
+
+                            {/* STOK BAHAN */}
+                            {view === 'list' && (
+                                <Card>
+                                    <div className="flex justify-between mb-4"><h2 className="text-xl font-bold">Stok Bahan Baku</h2>{user.role==='owner'&&<Button onClick={()=>{const n=prompt("Nama Bahan:");if(n)window.fb.addDoc(window.fb.collection(window.db,"inventory"),{name:n,stock:0,unit:'kg',price:0,minStock:5,category:'Umum'})}}><Icon name="plus"/> Baru</Button>}</div>
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-gray-50"><tr><th className="p-3">Nama</th><th className="p-3">Stok</th><th className="p-3">Aksi</th></tr></thead>
+                                        <tbody>
+                                            {inventory.map(i=>(
+                                                <tr key={i.id} className="border-b">
+                                                    <td className="p-3 font-medium">{i.name} <div className="text-xs text-gray-400">{formatRupiah(i.price)}/{i.unit}</div></td>
+                                                    <td className="p-3"><span className={i.stock<=i.minStock?'text-rose-600 font-bold':''}>{i.stock} {i.unit}</span></td>
+                                                    <td className="p-3 flex gap-2">
+                                                        <button onClick={()=>{const s=prompt("Update Stok (+/-):",0);if(s)window.fb.updateDoc(window.fb.doc(window.db,"inventory",i.id),{stock:Number(i.stock)+Number(s)})}} className="text-blue-600 bg-blue-50 p-1 rounded"><Icon name="edit-2" size={16}/></button>
+                                                        {user.role==='owner'&&<button onClick={()=>confirm("Hapus?")&&window.fb.deleteDoc(window.fb.doc(window.db,"inventory",i.id))} className="text-rose-600 bg-rose-50 p-1 rounded"><Icon name="trash-2" size={16}/></button>}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </Card>
+                            )}
+                            
+                            {/* MENU RESEP (SIMPLIFIED) */}
+                            {view === 'products' && (
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    {products.map(p=>(
+                                        <Card key={p.id}>
+                                            <div className="font-bold text-lg">{p.name}</div>
+                                            <div className="text-emerald-600 font-bold">{formatRupiah(p.sellingPrice)}</div>
+                                            <div className="mt-4 flex gap-2"><button onClick={()=>{if(confirm(`Produksi 1 ${p.name}?`)){
+                                                const batch=window.fb.writeBatch(window.db);
+                                                p.recipe.forEach(r=>{const i=inventory.find(x=>x.id===r.itemId);if(i)batch.update(window.fb.doc(window.db,"inventory",r.itemId),{stock:i.stock-r.qty})});
+                                                window.fb.addDoc(window.fb.collection(window.db,"usageLog"),{date:new Date().toISOString(),itemName:`[Produksi] ${p.name}`,amount:1,unit:'porsi',reason:'Produksi',cost:0,revenue:p.sellingPrice});
+                                                batch.commit().then(()=>alert("Sukses!"));
+                                            }}} className="w-full bg-emerald-600 text-white py-2 rounded">Produksi 1 Porsi</button></div>
+                                        </Card>
+                                    ))}
+                                    {user.role==='owner'&&<button onClick={()=>{const n=prompt("Nama Menu:");if(n)window.fb.addDoc(window.fb.collection(window.db,"products"),{name:n,sellingPrice:0,recipe:[],overhead:0})}} className="border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center font-bold text-gray-400 p-6">+ Menu Baru</button>}
+                                </div>
+                            )}
+
+                            {/* CATAT PAKAI */}
+                            {view === 'usage' && (
+                                <div className="grid md:grid-cols-2 gap-6">
+                                    <Card>
+                                        <h3 className="font-bold mb-4">Catat Manual</h3>
+                                        <form onSubmit={e=>{e.preventDefault();const fd=new FormData(e.target);const i=inventory.find(x=>x.id===fd.get('itemId'));if(!i)return;const q=Number(fd.get('qty'));window.fb.updateDoc(window.fb.doc(window.db,"inventory",i.id),{stock:i.stock-q});window.fb.addDoc(window.fb.collection(window.db,"usageLog"),{date:new Date().toISOString(),itemName:i.name,amount:q,unit:i.unit,reason:fd.get('reason'),cost:q*i.price});e.target.reset();alert("Tercatat!")}} className="space-y-4">
+                                            <select name="itemId" className="w-full border p-2 rounded" required><option value="">Pilih Item</option>{inventory.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select>
+                                            <input name="qty" type="number" placeholder="Jumlah" className="w-full border p-2 rounded" required />
+                                            <select name="reason" className="w-full border p-2 rounded"><option>Rusak/Basi</option><option>Tumpah</option><option>Tester</option></select>
+                                            <Button type="submit" className="w-full justify-center">Simpan</Button>
+                                        </form>
+                                    </Card>
+                                    <Card>
+                                        <h3 className="font-bold mb-4">Log Terakhir</h3>
+                                        {logs.slice(0,5).map(l=><div key={l.id} className="border-b p-2 text-sm flex justify-between"><span>{l.itemName}</span><span className="font-bold text-rose-500">-{l.amount}</span></div>)}
+                                    </Card>
+                                </div>
+                            )}
+
+                            {/* FITUR TAMBAHAN */}
+                            {view === 'finance' && <FinanceView logs={logs} requests={requests} />}
+                            {view === 'restock' && <RestockView inventory={inventory} requests={requests} user={user} />}
+                            {view === 'hpp' && <HPPCalculator inventory={inventory} />}
+
+                        </div>
+                    </main>
                 </div>
             );
         }
