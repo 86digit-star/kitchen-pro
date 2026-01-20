@@ -5,16 +5,14 @@ function createWindow() {
     const win = new BrowserWindow({
         width: 1280,
         height: 800,
-        title: "KitchenPro - Dapur Racik Dinda (Online Mode)",
+        title: "KitchenPro - F&B Inventory Manager",
         webPreferences: {
             nodeIntegration: true,
-            contextIsolation: false
+            contextIsolation: false // Diperlukan untuk akses file lokal/module
         },
-        autoHideMenuBar: true, // Menyembunyikan menu bar bawaan agar lebih rapi
-        icon: path.join(__dirname, 'icon.ico') // Opsional: jika Anda punya ikon
+        autoHideMenuBar: true
     });
 
-    // Memuat file index.html yang sudah berisi fitur lengkap & Firebase
     win.loadFile('index.html');
 }
 

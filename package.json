@@ -1,7 +1,7 @@
 {
-  "name": "kitchen-pro-online",
+  "name": "kitchen-pro-desktop",
   "version": "2.0.0",
-  "description": "Sistem Manajemen Dapur Terintegrasi (Firebase Online)",
+  "description": "F&B Inventory Management System (Online)",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -11,24 +11,22 @@
     "inventory",
     "kitchen",
     "f&b",
-    "firebase",
-    "online"
+    "firebase"
   ],
-  "author": "Dapur Racik Dinda",
+  "author": "KitchenPro",
   "license": "ISC",
   "devDependencies": {
     "electron": "^28.0.0",
     "electron-builder": "^24.9.0"
   },
   "build": {
-    "appId": "com.drd.kitchenpro",
-    "productName": "KitchenPro Online",
+    "appId": "com.kitchenpro.app",
+    "productName": "KitchenPro",
     "directories": {
       "output": "dist"
     },
     "win": {
-      "target": "nsis",
-      "icon": "icon.ico"
+      "target": "nsis"
     },
     "files": [
       "**/*",
