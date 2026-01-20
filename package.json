@@ -1,0 +1,35 @@
+{
+  "name": "kitchen-pro-desktop",
+  "version": "1.0.0",
+  "description": "F&B Inventory Management System",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "keywords": [
+    "inventory",
+    "kitchen",
+    "f&b"
+  ],
+  "author": "KitchenPro",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.0"
+  },
+  "build": {
+    "appId": "com.kitchenpro.app",
+    "productName": "KitchenPro",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "files": [
+      "**/*",
+      "!dist/*"
+    ]
+  }
+}
