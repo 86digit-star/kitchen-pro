@@ -5,13 +5,16 @@ function createWindow() {
     const win = new BrowserWindow({
         width: 1280,
         height: 800,
+        title: "KitchenPro - Dapur Racik Dinda (Online Mode)",
         webPreferences: {
             nodeIntegration: true,
-            contextIsolation: false // Allowed for local file app
+            contextIsolation: false
         },
-        autoHideMenuBar: true // Hide default menu bar
+        autoHideMenuBar: true, // Menyembunyikan menu bar bawaan agar lebih rapi
+        icon: path.join(__dirname, 'icon.ico') // Opsional: jika Anda punya ikon
     });
 
+    // Memuat file index.html yang sudah berisi fitur lengkap & Firebase
     win.loadFile('index.html');
 }
 

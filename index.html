@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KitchenPro - Dapur Racik Dinda</title>
+    <title>KitchenPro - Dapur Racik Dinda (Online)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -14,10 +14,13 @@
     
     <style>
         body { background-color: #f8fafc; font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         @media print { .no-print { display: none !important; } .print-only { display: block !important; } }
+        @keyframes slideInBottom { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
 <body>
@@ -27,6 +30,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, writeBatch, query, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
+        // CONFIG FIREBASE ANDA
         const firebaseConfig = {
             apiKey: "AIzaSyCaloFOXMSvi69fW3kNJ_R50dQoZYMIchY",
             authDomain: "drdkitchen-db.firebaseapp.com",
@@ -38,637 +42,595 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+        
+        // Expose Firebase ke Window agar bisa dipakai di script React
         window.db = db;
-        // Expose fungsi firebase agar bisa dipakai di script React di bawah
         window.fb = { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, writeBatch, query, orderBy, getDocs };
-        console.log("Firebase Connected Full Features");
+        console.log("Firebase Online Connected");
     </script>
 
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
+
+        // --- Mock Data Constants (Untuk Fallback) ---
+        const CATEGORIES = ["Fresh Food", "Bahan Kering", "Frozen Food", "Dairy", "Sayuran", "Packaging", "Cleaning"];
+        const UNITS = ["kg", "gram", "liter", "ml", "pcs", "pack", "karton", "ikat", "butir"];
+
+        // --- Helpers ---
         const formatRupiah = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n);
         const formatDate = (d) => d ? new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : "-";
-
-        // --- COMPONENTS DASAR ---
+        
+        // --- Shared Components ---
         const Icon = ({ name, size = 20, className = "" }) => {
             const ref = React.useRef(null);
             React.useEffect(() => { if (ref.current && window.lucide) window.lucide.createIcons({ root: ref.current, nameAttr: 'data-lucide', attrs: { width: size, height: size, class: `lucide lucide-${name}` } }); }, [name, size]);
             return <span ref={ref} className={`inline-flex items-center justify-center ${className}`}><i data-lucide={name}></i></span>;
         };
-        const Card = ({ children, className = "" }) => <div className={`bg-white rounded-2xl shadow-sm border border-slate-100 p-6 ${className}`}>{children}</div>;
-        const Button = ({ onClick, children, variant = "primary", className = "" }) => {
-            const base = "px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all disabled:opacity-50";
-            const v = { 
-                primary: "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm", 
-                secondary: "bg-white border text-slate-700 hover:bg-slate-50", 
-                danger: "bg-rose-50 text-rose-600 hover:bg-rose-100 border-rose-100" 
+
+        const Card = ({ children, className = "" }) => <div className={`bg-white rounded-2xl shadow-[0_2px_12px_-2px_rgba(0,0,0,0.06)] border border-slate-100 p-6 ${className}`}>{children}</div>;
+
+        const Button = ({ onClick, children, variant = "primary", className = "", disabled = false }) => {
+            const baseStyle = "px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed justify-center";
+            const variants = {
+                primary: "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm",
+                secondary: "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50",
+                danger: "bg-rose-50 text-rose-600 hover:bg-rose-100 border border-transparent",
+                outline: "border border-gray-300 text-gray-600 hover:bg-gray-50"
             };
-            return <button onClick={onClick} className={`${base} ${v[variant]} ${className}`}>{children}</button>;
+            return <button onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${className}`}>{children}</button>;
         };
+
         const Badge = ({ children, type = "default" }) => {
-            const c = { default: "bg-slate-100 text-slate-600", success: "bg-emerald-100 text-emerald-700", warning: "bg-amber-100 text-amber-700", danger: "bg-rose-100 text-rose-700" };
-            return <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${c[type]}`}>{children}</span>;
+            const styles = { default: "bg-gray-100 text-gray-700", success: "bg-emerald-50 text-emerald-700", warning: "bg-amber-50 text-amber-700", danger: "bg-rose-50 text-rose-700" };
+            return <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${styles[type]}`}>{children}</span>;
         };
 
-        // --- FITUR KOMPLEKS (RESTORED) ---
-
-        // 1. DASHBOARD COMPONENT
-        const DashboardView = ({ inventory, products, logs }) => {
-            const totalAsset = inventory.reduce((a,b)=>a+(b.stock*b.price),0);
-            const lowStock = inventory.filter(i=>i.stock<=i.minStock).length;
-            const topProducts = products.map(p => {
-                const sold = logs.filter(l => l.itemId === p.id).reduce((a,b)=>a+b.amount,0);
-                return { ...p, sold };
-            }).sort((a,b)=>b.sold-a.sold).slice(0,3);
-
+        const Modal = ({ isOpen, onClose, title, children }) => {
+            if (!isOpen) return null;
             return (
-                <div className="space-y-6 animate-in fade-in">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <Card className="bg-emerald-50 border-emerald-100">
-                            <div className="text-sm font-bold text-emerald-800 uppercase">Total Aset</div>
-                            <div className="text-2xl font-bold text-emerald-600">{formatRupiah(totalAsset)}</div>
-                        </Card>
-                        <Card className="bg-blue-50 border-blue-100">
-                            <div className="text-sm font-bold text-blue-800 uppercase">Menu Aktif</div>
-                            <div className="text-2xl font-bold text-blue-600">{products.length} Item</div>
-                        </Card>
-                         <Card className="bg-amber-50 border-amber-100">
-                            <div className="text-sm font-bold text-amber-800 uppercase">Transaksi</div>
-                            <div className="text-2xl font-bold text-amber-600">{logs.length} Log</div>
-                        </Card>
-                        <Card className={lowStock>0?"bg-rose-50 border-rose-100":"bg-slate-50"}>
-                            <div className="text-sm font-bold text-rose-800 uppercase">Perlu Restock</div>
-                            <div className={`text-2xl font-bold ${lowStock>0?'text-rose-600':'text-slate-600'}`}>{lowStock} Item</div>
-                        </Card>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <Card>
-                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Icon name="trending-up" className="text-emerald-500"/> Menu Terlaris</h3>
-                            <div className="space-y-3">
-                                {topProducts.map((p,i)=>(
-                                    <div key={p.id} className="flex justify-between items-center border-b pb-2">
-                                        <div className="flex items-center gap-3">
-                                            <span className="bg-emerald-100 text-emerald-700 w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold">{i+1}</span>
-                                            <span>{p.name}</span>
-                                        </div>
-                                        <span className="font-bold text-slate-600">{p.sold} Terjual</span>
-                                    </div>
-                                ))}
-                                {topProducts.length===0 && <p className="text-gray-400 italic">Belum ada data penjualan.</p>}
-                            </div>
-                        </Card>
-                         <Card>
-                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Icon name="alert-triangle" className="text-rose-500"/> Stok Menipis</h3>
-                            <div className="space-y-2 max-h-60 overflow-y-auto">
-                                {inventory.filter(i=>i.stock<=i.minStock).map(i=>(
-                                    <div key={i.id} className="flex justify-between items-center bg-rose-50 p-2 rounded text-sm">
-                                        <span className="font-medium text-rose-900">{i.name}</span>
-                                        <span className="font-bold text-rose-600">{i.stock} {i.unit}</span>
-                                    </div>
-                                ))}
-                                {lowStock===0 && <p className="text-emerald-600 font-bold text-center py-4">Semua Stok Aman! 🎉</p>}
-                            </div>
-                        </Card>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+                        <div className="flex justify-between items-center p-6 border-b sticky top-0 bg-white z-10">
+                            <h3 className="text-lg font-bold text-gray-900">{title}</h3>
+                            <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><Icon name="x" size={20}/></button>
+                        </div>
+                        <div className="p-6">{children}</div>
                     </div>
                 </div>
             );
         };
 
-        // 2. FINANCE VIEW
-        const FinanceView = ({ logs, requests, products }) => {
-            const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
-            const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
-            const [opsCost, setOpsCost] = useState(0);
-
-            const stats = useMemo(() => {
-                const filtered = logs.filter(l => {
-                    const d = l.date.slice(0,10);
-                    return d >= startDate && d <= endDate;
-                });
-                let rev = 0, cogs = 0, waste = 0;
-                
-                filtered.forEach(l => {
-                    // Cek apakah ini log produksi (Revenue) atau waste
-                    if (l.revenue !== undefined) { 
-                        rev += l.revenue; 
-                        cogs += l.cost; 
-                    } else { 
-                        waste += l.cost; 
-                    }
-                });
-                
-                return { rev, cogs, waste, net: rev - cogs - waste - opsCost };
-            }, [logs, startDate, endDate, opsCost]);
-
-            return (
-                <div className="space-y-6">
-                    <Card>
-                        <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-                            <div>
-                                <h3 className="text-xl font-bold text-slate-800">Laporan Keuangan</h3>
-                                <p className="text-sm text-slate-500">Analisis Laba Rugi Periode Terpilih</p>
-                            </div>
-                            <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-lg border">
-                                <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} className="bg-white border p-1 rounded text-sm" />
-                                <span className="text-gray-400">-</span>
-                                <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} className="bg-white border p-1 rounded text-sm" />
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                            <div className="p-5 bg-emerald-50 rounded-2xl border border-emerald-100">
-                                <div className="text-xs font-bold text-emerald-800 uppercase tracking-wide mb-1">Pendapatan (Omzet)</div>
-                                <div className="text-2xl font-bold text-emerald-600">{formatRupiah(stats.rev)}</div>
-                            </div>
-                            <div className="p-5 bg-blue-50 rounded-2xl border border-blue-100">
-                                <div className="text-xs font-bold text-blue-800 uppercase tracking-wide mb-1">HPP (Modal Bahan)</div>
-                                <div className="text-2xl font-bold text-blue-600">({formatRupiah(stats.cogs)})</div>
-                            </div>
-                             <div className="p-5 bg-rose-50 rounded-2xl border border-rose-100">
-                                <div className="text-xs font-bold text-rose-800 uppercase tracking-wide mb-1">Total Beban (Waste+Ops)</div>
-                                <div className="text-2xl font-bold text-rose-600">({formatRupiah(stats.waste + opsCost)})</div>
-                            </div>
-                            <div className={`p-5 rounded-2xl border ${stats.net>=0 ? 'bg-indigo-50 border-indigo-100' : 'bg-orange-50 border-orange-100'}`}>
-                                <div className="text-xs font-bold text-indigo-800 uppercase tracking-wide mb-1">Laba Bersih (Net)</div>
-                                <div className={`text-2xl font-bold ${stats.net>=0?'text-indigo-600':'text-orange-600'}`}>{formatRupiah(stats.net)}</div>
-                            </div>
-                        </div>
-
-                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <h4 className="font-bold text-sm text-slate-700 mb-3">Input Biaya Operasional Tambahan</h4>
-                            <div className="flex items-center gap-4">
-                                <div className="flex-1">
-                                    <label className="text-xs text-slate-500 block mb-1">Biaya Listrik, Gaji, Gas, dll (Total Periode)</label>
-                                    <input type="number" value={opsCost} onChange={e=>setOpsCost(Number(e.target.value))} className="w-full border p-2 rounded-lg" placeholder="0" />
-                                </div>
-                                <div className="flex-1 pt-5">
-                                    <div className="text-xs text-rose-500 italic">* Biaya Waste bahan baku: {formatRupiah(stats.waste)} (Otomatis dari log)</div>
-                                </div>
-                            </div>
-                        </div>
-                    </Card>
-                </div>
-            );
-        };
-
-        // 3. RESTOCK VIEW
-        const RestockView = ({ inventory, requests, user }) => {
-            const [cart, setCart] = useState({});
-            
-            const handleOrder = async () => {
-                const items = inventory.filter(i => cart[i.id] > 0).map(i => ({
-                    id: i.id, name: i.name, qty: parseFloat(cart[i.id]), price: i.price, unit: i.unit, isRealized: false
-                }));
-                if(items.length === 0) return alert("Pilih item dulu!");
-                
-                try {
-                    await window.fb.addDoc(window.fb.collection(window.db, "requests"), {
-                        date: new Date().toISOString(), requester: user.name, items, status: 'pending',
-                        totalEst: items.reduce((a,b)=>a+(b.qty*b.price),0)
-                    });
-                    setCart({}); alert("Request terkirim!");
-                } catch(e) { alert(e.message); }
-            };
-
-            const toggleRealize = async (req, itemIndex) => {
-                if(user.role !== 'ceo') return alert("Hanya CEO yg bisa validasi barang masuk");
-                const newItems = [...req.items];
-                const item = newItems[itemIndex];
-                if(item.isRealized) return; 
-
-                if(!confirm(`Validasi barang masuk: ${item.name} (${item.qty})? Stok akan bertambah.`)) return;
-
-                const db = window.db;
-                const batch = window.fb.writeBatch(db);
-                
-                // 1. Update Request
-                item.isRealized = true;
-                const allDone = newItems.every(i => i.isRealized);
-                batch.update(window.fb.doc(db, "requests", req.id), { items: newItems, status: allDone ? 'done' : 'pending' });
-
-                // 2. Update Inventory
-                const invItem = inventory.find(i => i.id === item.id);
-                if(invItem) {
-                    batch.update(window.fb.doc(db, "inventory", item.id), { stock: Number(invItem.stock) + Number(item.qty) });
+        // --- Chart Component Wrapper ---
+        const ChartComponent = ({ type, data, options }) => {
+            const canvasRef = React.useRef(null);
+            const chartRef = React.useRef(null);
+            React.useEffect(() => {
+                if (chartRef.current) chartRef.current.destroy();
+                if (canvasRef.current) {
+                    chartRef.current = new Chart(canvasRef.current, { type, data, options: { responsive: true, maintainAspectRatio: false, ...options } });
                 }
+                return () => chartRef.current?.destroy();
+            }, [data, options, type]);
+            return <div className="h-64 w-full"><canvas ref={canvasRef}></canvas></div>;
+        };
 
-                await batch.commit();
+        // --- SUB-COMPONENTS (LOGIN, DASHBOARD, ETC) ---
+
+        const LoginScreen = ({ onLogin }) => {
+            const [role, setRole] = useState(null);
+            const [pin, setPin] = useState("");
+            const [error, setError] = useState("");
+
+            const handlePinSubmit = (e) => {
+                e.preventDefault();
+                // Simple PIN Auth (Client Side Gatekeeper)
+                if ((role === 'owner' && pin === '1234') || (role === 'ceo' && pin === '0000')) {
+                    onLogin(role);
+                } else {
+                    setError("PIN Salah!"); setPin("");
+                }
             };
 
             return (
-                <div className="space-y-6">
-                    <Card>
-                        <h3 className="font-bold text-lg mb-4 text-slate-800 flex items-center gap-2"><Icon name="shopping-cart" className="text-emerald-600"/> Buat Request Stok Baru</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[400px] overflow-y-auto pr-2">
-                            {inventory.map(item => (
-                                <div key={item.id} className={`p-3 border rounded-xl transition-all ${item.stock <= item.minStock ? 'bg-rose-50 border-rose-200 ring-1 ring-rose-200' : 'bg-white hover:border-emerald-300'}`}>
-                                    <div className="flex justify-between font-bold text-sm mb-2">
-                                        <span className="text-slate-800">{item.name}</span> 
-                                        <span className={item.stock<=item.minStock?'text-rose-600':'text-slate-500'}>{item.stock} {item.unit}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <input type="number" placeholder="Jml Beli" className="w-full border p-2 rounded-lg text-sm" 
-                                            value={cart[item.id] || ''} onChange={e=>setCart({...cart, [item.id]: e.target.value})} />
-                                        <span className="text-xs text-gray-500 font-medium w-8">{item.unit}</span>
-                                    </div>
-                                    <div className="text-right text-xs text-gray-400 mt-1">Est: {formatRupiah((cart[item.id]||0)*item.price)}</div>
-                                </div>
-                            ))}
+                <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl overflow-hidden w-full max-w-md animate-[fadeIn_0.5s]">
+                        <div className="p-8 text-center border-b border-gray-100">
+                            <div className="inline-flex p-3 bg-emerald-100 text-emerald-600 rounded-xl mb-4"><Icon name="chef-hat" size={32} /></div>
+                            <h1 className="text-2xl font-bold text-gray-800">KitchenPro Login</h1>
+                            <p className="text-emerald-600 font-bold text-sm mt-1">● Online Database Mode</p>
                         </div>
-                        <div className="mt-4 pt-4 border-t flex justify-between items-center">
-                            <div className="text-sm font-bold text-slate-600">Total Est: {formatRupiah(inventory.reduce((a,b)=>a+((cart[b.id]||0)*b.price),0))}</div>
-                            <Button onClick={handleOrder}><Icon name="send" size={16}/> Kirim Request</Button>
-                        </div>
-                    </Card>
+                        {!role ? (
+                            <div className="p-8 space-y-4">
+                                <button onClick={() => setRole('owner')} className="w-full p-4 flex items-center gap-4 border-2 border-gray-100 hover:border-emerald-500 hover:bg-emerald-50 rounded-xl transition-all group text-left">
+                                    <div className="p-3 bg-blue-100 text-blue-600 rounded-full"><Icon name="shield-check" /></div>
+                                    <div><div className="font-bold">Owner</div><div className="text-xs text-gray-500">Akses Penuh (PIN: 1234)</div></div>
+                                </button>
+                                <button onClick={() => setRole('ceo')} className="w-full p-4 flex items-center gap-4 border-2 border-gray-100 hover:border-emerald-500 hover:bg-emerald-50 rounded-xl transition-all group text-left">
+                                    <div className="p-3 bg-purple-100 text-purple-600 rounded-full"><Icon name="user-check" /></div>
+                                    <div><div className="font-bold">Staff / CEO</div><div className="text-xs text-gray-500">Akses Terbatas (PIN: 0000)</div></div>
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="p-8">
+                                <button onClick={() => { setRole(null); setError(""); }} className="text-sm text-gray-500 flex items-center gap-1 mb-6"><Icon name="arrow-left" size={16}/> Kembali</button>
+                                <h2 className="text-xl font-bold text-center mb-6">PIN {role === 'owner' ? 'Owner' : 'Staff'}</h2>
+                                <form onSubmit={handlePinSubmit} className="space-y-4">
+                                    <input type="password" autoFocus maxLength={4} className="w-full text-center text-3xl tracking-[1em] font-bold p-4 border-2 border-gray-200 rounded-xl focus:border-emerald-500 outline-none" value={pin} onChange={e => { setPin(e.target.value); setError(""); }} placeholder="••••" />
+                                    {error && <div className="text-rose-500 text-sm text-center font-bold">{error}</div>}
+                                    <Button type="submit" className="w-full justify-center py-3 text-lg">Masuk</Button>
+                                </form>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
 
-                    <div className="space-y-4">
-                        <h3 className="font-bold text-lg text-slate-800">Riwayat Request</h3>
-                        {requests.length === 0 && <div className="text-center py-10 text-gray-400 border-2 border-dashed rounded-xl">Belum ada request</div>}
-                        {requests.sort((a,b)=>b.date.localeCompare(a.date)).map(req => (
-                            <div key={req.id} className={`bg-white rounded-xl border p-4 ${req.status==='done'?'opacity-60 bg-gray-50':''}`}>
-                                <div className="flex justify-between items-start mb-3 border-b pb-2">
-                                    <div>
-                                        <div className="font-bold text-slate-800">{formatDate(req.date)}</div>
-                                        <div className="text-xs text-gray-500">Req by: <span className="font-semibold">{req.requester}</span></div>
-                                    </div>
-                                    <Badge type={req.status==='done'?'success':'warning'}>{req.status==='done'?'Selesai':'Pending'}</Badge>
-                                </div>
-                                <div className="space-y-2">
-                                    {req.items.map((item, idx) => (
-                                        <div key={idx} className="flex justify-between items-center text-sm p-2 bg-slate-50 rounded">
-                                            <div className="flex items-center gap-3">
-                                                <button 
-                                                    onClick={()=>toggleRealize(req, idx)} 
-                                                    disabled={item.isRealized} 
-                                                    title={item.isRealized ? "Sudah masuk" : "Klik untuk konfirmasi barang masuk"}
-                                                    className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${item.isRealized?'bg-emerald-500 border-emerald-500 text-white':'bg-white hover:border-emerald-500'}`}
-                                                >
-                                                    {item.isRealized && <Icon name="check" size={12}/>}
-                                                </button>
-                                                <span className={item.isRealized?'line-through text-gray-400 font-medium':'text-slate-700 font-medium'}>{item.name}</span>
-                                            </div>
-                                            <div className="text-slate-600">{item.qty} {item.unit}</div>
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="mt-3 text-right text-xs font-bold text-slate-500">Total: {formatRupiah(req.totalEst)}</div>
+        // --- DASHBOARD ---
+        const DashboardView = ({ inventory, products, usageLog }) => {
+            const stats = useMemo(() => {
+                const totalAsset = inventory.reduce((acc, i) => acc + (i.stock * i.price), 0);
+                const lowStock = inventory.filter(i => i.stock <= i.minStock).length;
+                
+                // Analytics Logic
+                const sales = {};
+                usageLog.filter(l => l.reason && l.reason.includes('Produksi')).forEach(l => {
+                    sales[l.itemName] = (sales[l.itemName] || 0) + l.amount;
+                });
+                const topProducts = Object.entries(sales).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+                return { totalAsset, lowStock, topProducts, activeMenus: products.length, txCount: usageLog.length };
+            }, [inventory, products, usageLog]);
+
+            return (
+                <div className="space-y-6 animate-[fadeIn_0.5s]">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        {[
+                            { title: "Total Aset", value: formatRupiah(stats.totalAsset), icon: "wallet", color: "emerald" },
+                            { title: "Menu Aktif", value: stats.activeMenus, icon: "coffee", color: "blue" },
+                            { title: "Perlu Restock", value: stats.lowStock, icon: "alert-triangle", color: "rose" },
+                            { title: "Transaksi", value: stats.txCount, icon: "activity", color: "violet" }
+                        ].map((s, i) => (
+                            <div key={i} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
+                                <div><div className="text-slate-500 text-sm font-medium">{s.title}</div><div className={`text-2xl font-bold text-slate-800`}>{s.value}</div></div>
+                                <div className={`p-3 rounded-xl bg-${s.color}-50 text-${s.color}-600`}><Icon name={s.icon} size={24}/></div>
                             </div>
                         ))}
                     </div>
+                    
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <Card>
+                            <h3 className="font-bold mb-4 flex gap-2"><Icon name="pie-chart" className="text-emerald-600"/> Menu Terlaris</h3>
+                            {stats.topProducts.length > 0 ? (
+                                <ChartComponent type="doughnut" data={{
+                                    labels: stats.topProducts.map(p=>p[0]),
+                                    datasets: [{ data: stats.topProducts.map(p=>p[1]), backgroundColor: ['#10b981', '#3b82f6', '#f43f5e', '#f59e0b', '#8b5cf6'] }]
+                                }} />
+                            ) : <div className="text-center py-10 text-gray-400">Belum ada data penjualan</div>}
+                        </Card>
+                        <Card>
+                             <h3 className="font-bold mb-4 flex gap-2"><Icon name="alert-circle" className="text-rose-600"/> Stok Menipis</h3>
+                             <div className="overflow-y-auto max-h-64 space-y-2">
+                                {inventory.filter(i=>i.stock<=i.minStock).map(i=>(
+                                    <div key={i.id} className="flex justify-between items-center p-3 bg-rose-50 rounded-lg border border-rose-100">
+                                        <div className="font-medium text-rose-900">{i.name}</div>
+                                        <div className="font-bold text-rose-600">{i.stock} {i.unit}</div>
+                                    </div>
+                                ))}
+                                {stats.lowStock === 0 && <div className="text-center text-emerald-600 font-medium py-10">Semua stok aman! 🎉</div>}
+                             </div>
+                        </Card>
+                    </div>
                 </div>
             );
         };
 
-        // 4. HPP CALCULATOR
-        const HPPCalculator = ({ inventory }) => {
-            const [rows, setRows] = useState([{id:1, itemId:'', qty:0}]);
-            const [overhead, setOverhead] = useState(0);
-            const [margin, setMargin] = useState(30);
-
-            const totalBase = rows.reduce((sum, r) => {
-                const item = inventory.find(i=>i.id===r.itemId);
-                return sum + (item ? item.price * r.qty : 0);
-            }, 0) + Number(overhead);
+        // --- INVENTORY ---
+        const InventoryView = ({ inventory, user }) => {
+            const [search, setSearch] = useState("");
+            const [editingItem, setEditingItem] = useState(null);
             
-            const sellingPrice = totalBase / (1 - (margin/100));
+            const filtered = inventory.filter(i => i.name.toLowerCase().includes(search.toLowerCase()));
+
+            const handleSave = async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const payload = {
+                    name: formData.get('name'),
+                    category: formData.get('category'),
+                    stock: parseFloat(formData.get('stock')),
+                    unit: formData.get('unit'),
+                    price: parseFloat(formData.get('price')),
+                    minStock: parseFloat(formData.get('minStock'))
+                };
+
+                try {
+                    if (editingItem?.id) {
+                        await window.fb.updateDoc(window.fb.doc(window.db, "inventory", editingItem.id), payload);
+                        alert("Bahan berhasil diupdate");
+                    } else {
+                        await window.fb.addDoc(window.fb.collection(window.db, "inventory"), payload);
+                        alert("Bahan baru ditambahkan");
+                    }
+                    setEditingItem(null);
+                } catch(e) { alert("Error: " + e.message); }
+            };
+
+            const handleDelete = async (id) => {
+                if (confirm("Hapus item ini permanen?")) {
+                    await window.fb.deleteDoc(window.fb.doc(window.db, "inventory", id));
+                }
+            };
 
             return (
-                <div className="max-w-3xl mx-auto">
+                <div className="space-y-6">
+                    <div className="flex flex-col md:flex-row gap-4 justify-between">
+                        <div className="relative flex-1">
+                            <Icon name="search" className="absolute left-3 top-3 text-gray-400" size={18}/>
+                            <input type="text" placeholder="Cari bahan..." className="pl-10 p-2.5 w-full border rounded-xl" value={search} onChange={e=>setSearch(e.target.value)} />
+                        </div>
+                        {user.role === 'owner' && <Button onClick={() => setEditingItem({})}><Icon name="plus"/> Tambah Bahan</Button>}
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-gray-50 border-b">
+                                <tr>
+                                    <th className="p-4">Nama Bahan</th>
+                                    <th className="p-4">Kategori</th>
+                                    <th className="p-4 text-center">Stok</th>
+                                    <th className="p-4">Harga</th>
+                                    <th className="p-4 text-right">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                                {filtered.map(item => (
+                                    <tr key={item.id} className="hover:bg-gray-50">
+                                        <td className="p-4 font-medium">{item.name}</td>
+                                        <td className="p-4"><Badge>{item.category}</Badge></td>
+                                        <td className="p-4 text-center">
+                                            <span className={`font-bold ${item.stock <= item.minStock ? 'text-rose-600' : 'text-gray-700'}`}>{item.stock} {item.unit}</span>
+                                        </td>
+                                        <td className="p-4 text-gray-500">{formatRupiah(item.price)}</td>
+                                        <td className="p-4 text-right flex justify-end gap-2">
+                                            <button onClick={()=>setEditingItem(item)} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100"><Icon name="edit-2" size={16}/></button>
+                                            {user.role === 'owner' && <button onClick={()=>handleDelete(item.id)} className="p-2 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100"><Icon name="trash-2" size={16}/></button>}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <Modal isOpen={!!editingItem} onClose={()=>setEditingItem(null)} title={editingItem?.id ? "Edit Bahan" : "Tambah Bahan"}>
+                        {editingItem && (
+                            <form onSubmit={handleSave} className="space-y-4">
+                                <input name="name" defaultValue={editingItem.name} placeholder="Nama Bahan" className="w-full p-2 border rounded" required />
+                                <div className="grid grid-cols-2 gap-4">
+                                    <select name="category" defaultValue={editingItem.category || CATEGORIES[0]} className="p-2 border rounded">{CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}</select>
+                                    <select name="unit" defaultValue={editingItem.unit || UNITS[0]} className="p-2 border rounded">{UNITS.map(u=><option key={u} value={u}>{u}</option>)}</select>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <input name="stock" type="number" step="any" defaultValue={editingItem.stock} placeholder="Stok Awal" className="p-2 border rounded" required />
+                                    <input name="minStock" type="number" step="any" defaultValue={editingItem.minStock || 5} placeholder="Min. Stok" className="p-2 border rounded" required />
+                                </div>
+                                <input name="price" type="number" defaultValue={editingItem.price} placeholder="Harga per Unit" className="w-full p-2 border rounded" required />
+                                <Button type="submit" className="w-full justify-center">Simpan ke Cloud</Button>
+                            </form>
+                        )}
+                    </Modal>
+                </div>
+            );
+        };
+
+        // --- PRODUCTS / MENU ---
+        const ProductsView = ({ products, inventory }) => {
+            const [isEditing, setIsEditing] = useState(false);
+            const [tempProd, setTempProd] = useState(null);
+
+            const calculateHPP = (recipe, overhead) => {
+                const matCost = recipe.reduce((acc, r) => {
+                    const item = inventory.find(i => i.id === r.itemId);
+                    return acc + (item ? item.price * r.qty : 0);
+                }, 0);
+                return matCost + (parseFloat(overhead) || 0);
+            };
+
+            const handleSave = async () => {
+                if(!tempProd.name) return alert("Nama wajib diisi");
+                
+                try {
+                    const payload = {
+                        name: tempProd.name,
+                        sellingPrice: parseFloat(tempProd.sellingPrice) || 0,
+                        overhead: parseFloat(tempProd.overhead) || 0,
+                        recipe: tempProd.recipe
+                    };
+
+                    if (tempProd.id) {
+                        await window.fb.updateDoc(window.fb.doc(window.db, "products", tempProd.id), payload);
+                    } else {
+                        await window.fb.addDoc(window.fb.collection(window.db, "products"), payload);
+                    }
+                    setIsEditing(false);
+                    alert("Menu berhasil disimpan!");
+                } catch(e) { alert("Error: " + e.message); }
+            };
+
+            const addIngredient = () => setTempProd({...tempProd, recipe: [...tempProd.recipe, { itemId: inventory[0]?.id, qty: 1 }]});
+
+            if (isEditing) {
+                return (
                     <Card>
-                        <h3 className="font-bold text-xl mb-6 text-slate-800 flex items-center gap-2"><Icon name="calculator" className="text-indigo-600"/> Kalkulator HPP & Harga Jual</h3>
-                        
-                        <div className="space-y-3 mb-6">
-                            <label className="text-sm font-bold text-slate-700">Komposisi Bahan Baku</label>
-                            {rows.map((r, i) => (
-                                <div key={r.id} className="flex gap-2 items-center">
-                                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">{i+1}</div>
-                                    <select className="flex-1 border p-2 rounded-lg text-sm bg-white" value={r.itemId} onChange={e=>{const n=[...rows];n[i].itemId=e.target.value;setRows(n)}}>
-                                        <option value="">- Pilih Bahan -</option>
-                                        {inventory.map(item=><option key={item.id} value={item.id}>{item.name} (@{formatRupiah(item.price)}/{item.unit})</option>)}
-                                    </select>
-                                    <input type="number" className="w-24 border p-2 rounded-lg text-sm text-center" placeholder="Qty" value={r.qty} onChange={e=>{const n=[...rows];n[i].qty=e.target.value;setRows(n)}} />
-                                    <button onClick={()=>setRows(rows.filter((_,x)=>x!==i))} className="text-rose-400 hover:bg-rose-50 p-2 rounded"><Icon name="trash-2" size={16}/></button>
-                                </div>
-                            ))}
-                            <Button variant="secondary" onClick={()=>setRows([...rows, {id:Date.now(), itemId:'', qty:0}])} className="w-full justify-center text-sm border-dashed"><Icon name="plus" size={16}/> Tambah Bahan</Button>
+                        <div className="flex justify-between mb-6">
+                            <h2 className="text-xl font-bold">{tempProd.id ? "Edit Menu" : "Menu Baru"}</h2>
+                            <button onClick={()=>setIsEditing(false)}><Icon name="x"/></button>
                         </div>
+                        <div className="space-y-4">
+                            <input value={tempProd.name} onChange={e=>setTempProd({...tempProd, name: e.target.value})} placeholder="Nama Menu" className="w-full p-2 border rounded" />
+                            <div className="grid grid-cols-2 gap-4">
+                                <input type="number" value={tempProd.sellingPrice} onChange={e=>setTempProd({...tempProd, sellingPrice: parseFloat(e.target.value)})} placeholder="Harga Jual" className="p-2 border rounded" />
+                                <input type="number" value={tempProd.overhead} onChange={e=>setTempProd({...tempProd, overhead: parseFloat(e.target.value)})} placeholder="Overhead Cost" className="p-2 border rounded" />
+                            </div>
+                            
+                            <div className="bg-gray-50 p-4 rounded-xl space-y-2">
+                                <div className="flex justify-between font-bold text-sm text-gray-500"><span>Bahan Baku</span> <button onClick={addIngredient} className="text-blue-600">+ Tambah</button></div>
+                                {tempProd.recipe.map((r, idx) => (
+                                    <div key={idx} className="flex gap-2">
+                                        <select value={r.itemId} onChange={e=>{
+                                            const newRec = [...tempProd.recipe]; newRec[idx].itemId = e.target.value; setTempProd({...tempProd, recipe: newRec});
+                                        }} className="flex-1 p-2 border rounded text-sm">
+                                            {inventory.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}
+                                        </select>
+                                        <input type="number" step="any" value={r.qty} onChange={e=>{
+                                            const newRec = [...tempProd.recipe]; newRec[idx].qty = parseFloat(e.target.value); setTempProd({...tempProd, recipe: newRec});
+                                        }} className="w-20 p-2 border rounded text-sm" placeholder="Qty" />
+                                        <button onClick={()=>{
+                                            const newRec = tempProd.recipe.filter((_,i)=>i!==idx); setTempProd({...tempProd, recipe: newRec});
+                                        }} className="text-rose-500"><Icon name="trash-2" size={16}/></button>
+                                    </div>
+                                ))}
+                            </div>
+                            
+                            <div className="p-4 bg-emerald-50 rounded-xl flex justify-between items-center">
+                                <div><div className="text-sm text-emerald-800">Estimasi HPP</div><div className="text-xl font-bold text-emerald-600">{formatRupiah(calculateHPP(tempProd.recipe, tempProd.overhead))}</div></div>
+                                <Button onClick={handleSave}>Simpan Menu</Button>
+                            </div>
+                        </div>
+                    </Card>
+                );
+            }
 
-                        <div className="grid grid-cols-2 gap-6 border-t pt-6">
-                            <div>
-                                <label className="text-xs font-bold block text-slate-500 mb-1">Biaya Lain (Packaging/Listrik)</label>
-                                <div className="relative">
-                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold">Rp</span>
-                                    <input type="number" className="border p-2 pl-8 rounded-lg w-full font-bold text-slate-700" value={overhead} onChange={e=>setOverhead(e.target.value)} />
-                                </div>
+            return (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <Card className="flex flex-col items-center justify-center border-dashed border-2 border-gray-300 cursor-pointer hover:border-emerald-500 group" onClick={()=>{ setTempProd({ name: '', sellingPrice: 0, overhead: 0, recipe: [] }); setIsEditing(true); }}>
+                        <div className="p-4 rounded-full bg-gray-100 group-hover:bg-emerald-50 text-gray-400 group-hover:text-emerald-600 mb-2"><Icon name="plus" size={32}/></div>
+                        <span className="font-bold text-gray-500 group-hover:text-emerald-600">Buat Menu Baru</span>
+                    </Card>
+                    {products.map(p => (
+                        <Card key={p.id} className="relative group">
+                            <div className="flex justify-between items-start mb-4">
+                                <h3 className="font-bold text-lg">{p.name}</h3>
+                                <button onClick={()=>{ setTempProd(p); setIsEditing(true); }} className="text-blue-500 bg-blue-50 p-1 rounded hover:bg-blue-100"><Icon name="edit-3" size={16}/></button>
                             </div>
-                            <div>
-                                <label className="text-xs font-bold block text-slate-500 mb-1">Target Margin (%)</label>
-                                <div className="relative">
-                                    <input type="number" className="border p-2 pr-8 rounded-lg w-full font-bold text-blue-600" value={margin} onChange={e=>setMargin(e.target.value)} />
-                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold">%</span>
-                                </div>
+                            <div className="space-y-2 text-sm">
+                                <div className="flex justify-between border-b pb-2"><span>Harga Jual</span> <span className="font-bold">{formatRupiah(p.sellingPrice)}</span></div>
+                                <div className="flex justify-between border-b pb-2"><span>HPP</span> <span className="font-bold text-gray-500">{formatRupiah(calculateHPP(p.recipe, p.overhead))}</span></div>
+                                <div className="flex justify-between"><span>Profit</span> <span className="font-bold text-emerald-600">{formatRupiah(p.sellingPrice - calculateHPP(p.recipe, p.overhead))}</span></div>
                             </div>
-                        </div>
+                        </Card>
+                    ))}
+                </div>
+            );
+        };
 
-                        <div className="mt-8 bg-slate-900 p-6 rounded-2xl text-center text-white relative overflow-hidden">
-                             <div className="relative z-10">
-                                <div className="text-sm text-slate-400 uppercase tracking-widest font-bold mb-2">Saran Harga Jual</div>
-                                <div className="text-4xl font-bold text-emerald-400 mb-4">{formatRupiah(sellingPrice)}</div>
-                                <div className="flex justify-center gap-4 text-xs text-slate-400 border-t border-slate-700 pt-4">
-                                    <div>HPP Total: <span className="text-white font-bold">{formatRupiah(totalBase)}</span></div>
-                                    <div>Profit/Unit: <span className="text-white font-bold">{formatRupiah(sellingPrice - totalBase)}</span></div>
-                                </div>
-                            </div>
+        // --- FINANCE & REPORTS ---
+        const FinanceView = ({ usageLog }) => {
+            const stats = useMemo(() => {
+                let revenue = 0, cogs = 0, waste = 0;
+                usageLog.forEach(l => {
+                    if(l.reason && l.reason.includes('Produksi')) {
+                        revenue += (l.revenue || 0);
+                        cogs += l.cost;
+                    } else {
+                        waste += l.cost;
+                    }
+                });
+                return { revenue, cogs, waste, profit: revenue - cogs - waste };
+            }, [usageLog]);
+
+            return (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
+                            <div className="text-sm text-emerald-800 font-bold uppercase">Pendapatan</div>
+                            <div className="text-2xl font-bold text-emerald-600">{formatRupiah(stats.revenue)}</div>
                         </div>
+                        <div className="p-6 bg-blue-50 rounded-2xl border border-blue-100">
+                            <div className="text-sm text-blue-800 font-bold uppercase">HPP (Modal)</div>
+                            <div className="text-2xl font-bold text-blue-600">({formatRupiah(stats.cogs)})</div>
+                        </div>
+                        <div className="p-6 bg-rose-50 rounded-2xl border border-rose-100">
+                            <div className="text-sm text-rose-800 font-bold uppercase">Waste / Rugi</div>
+                            <div className="text-2xl font-bold text-rose-600">({formatRupiah(stats.waste)})</div>
+                        </div>
+                        <div className={`p-6 rounded-2xl border ${stats.profit >=0 ? 'bg-indigo-50 border-indigo-100' : 'bg-orange-50 border-orange-100'}`}>
+                            <div className="text-sm text-indigo-800 font-bold uppercase">Laba Bersih</div>
+                            <div className={`text-2xl font-bold ${stats.profit>=0 ? 'text-indigo-600' : 'text-orange-600'}`}>{formatRupiah(stats.profit)}</div>
+                        </div>
+                    </div>
+                    
+                    <Card>
+                        <h3 className="font-bold mb-4">Riwayat Transaksi Terakhir</h3>
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-gray-50"><tr><th className="p-3">Tanggal</th><th className="p-3">Item</th><th className="p-3">Tipe</th><th className="p-3 text-right">Nilai</th></tr></thead>
+                            <tbody>
+                                {usageLog.slice(0, 10).map(l => (
+                                    <tr key={l.id} className="border-b">
+                                        <td className="p-3 text-gray-500">{formatDate(l.date)}</td>
+                                        <td className="p-3">{l.itemName}</td>
+                                        <td className="p-3"><Badge type={l.reason.includes('Produksi')?'success':'danger'}>{l.reason}</Badge></td>
+                                        <td className="p-3 text-right font-mono">{formatRupiah(l.cost)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </Card>
                 </div>
             );
         };
 
-        // --- MAIN APPLICATION ---
+        // --- MAIN APP ---
         function KitchenPro() {
             const [view, setView] = useState('dashboard');
-            const [user, setUser] = useState(JSON.parse(localStorage.getItem('fnb_user_role')) || null);
+            const [user, setUser] = useState(null); // Local session state
             
-            // Firebase Data State
+            // FIREBASE DATA STATES
             const [inventory, setInventory] = useState([]);
             const [products, setProducts] = useState([]);
-            const [logs, setLogs] = useState([]);
-            const [requests, setRequests] = useState([]);
+            const [usageLog, setUsageLog] = useState([]);
             const [loading, setLoading] = useState(true);
 
-            // Fetch Data Realtime
+            // REAL-TIME SYNC WITH FIREBASE
             useEffect(() => {
                 if (!window.fb || !window.db) return;
-                const db = window.db;
                 
-                // Subscribe to collections
-                const unsubInv = window.fb.onSnapshot(window.fb.collection(db, "inventory"), s => setInventory(s.docs.map(d=>({id:d.id, ...d.data()}))));
-                const unsubProd = window.fb.onSnapshot(window.fb.collection(db, "products"), s => setProducts(s.docs.map(d=>({id:d.id, ...d.data()}))));
-                // Sort logs by date desc
-                const unsubLogs = window.fb.onSnapshot(window.fb.query(window.fb.collection(db, "usageLog"), window.fb.orderBy("date", "desc")), s => setLogs(s.docs.map(d=>({id:d.id, ...d.data()}))));
-                const unsubReq = window.fb.onSnapshot(window.fb.collection(db, "requests"), s => {
-                    setRequests(s.docs.map(d=>({id:d.id, ...d.data()})));
+                // 1. Inventory Sync
+                const unsubInv = window.fb.onSnapshot(window.fb.collection(window.db, "inventory"), (snap) => {
+                    setInventory(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                });
+
+                // 2. Products Sync
+                const unsubProd = window.fb.onSnapshot(window.fb.collection(window.db, "products"), (snap) => {
+                    setProducts(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                });
+
+                // 3. Log Sync (Ordered by date)
+                const qLog = window.fb.query(window.fb.collection(window.db, "usageLog"), window.fb.orderBy("date", "desc"));
+                const unsubLog = window.fb.onSnapshot(qLog, (snap) => {
+                    setUsageLog(snap.docs.map(d => ({id: d.id, ...d.data()})));
                     setLoading(false);
                 });
 
-                return () => { unsubInv(); unsubProd(); unsubLogs(); unsubReq(); };
+                return () => { unsubInv(); unsubProd(); unsubLog(); };
             }, []);
 
-            const handleLogin = (role) => { 
-                const u={role, name:role==='owner'?'Owner':'CEO'}; 
-                setUser(u); 
-                localStorage.setItem('fnb_user_role', JSON.stringify(u)); 
+            const handleLogin = (role) => {
+                setUser({ role, name: role === 'owner' ? 'Owner' : 'Staff' });
+                setView('dashboard');
             };
-            
-            if(!user) return (
-                <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
-                    <div className="bg-white p-8 rounded-2xl w-full max-w-md text-center shadow-2xl">
-                        <div className="bg-emerald-100 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 text-emerald-600"><Icon name="chef-hat" size={32}/></div>
-                        <h1 className="text-2xl font-bold mb-2 text-slate-800">KitchenPro Login</h1>
-                        <p className="text-slate-500 mb-8">Sistem Manajemen Dapur Terintegrasi (Firebase)</p>
-                        <div className="space-y-3">
-                            <button onClick={()=>handleLogin('owner')} className="w-full bg-emerald-600 text-white p-4 rounded-xl font-bold hover:bg-emerald-700 transition flex items-center justify-center gap-2"><Icon name="shield"/> Owner (Akses Penuh)</button>
-                            <button onClick={()=>handleLogin('ceo')} className="w-full border-2 border-slate-100 text-slate-600 p-4 rounded-xl font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2"><Icon name="user"/> Staff / CEO</button>
-                        </div>
-                    </div>
-                </div>
-            );
 
-            if(loading) return <div className="h-screen flex flex-col items-center justify-center text-emerald-600 gap-4"><div className="animate-spin"><Icon name="loader-2" size={40}/></div><p className="font-bold">Memuat Database...</p></div>;
+            const handleLogout = () => setUser(null);
 
-            const menuItems = [
+            // --- GLOBAL FUNCTIONS (Production, etc) ---
+            const handleProduce = async (product, qty) => {
+                // Logic Produksi (Batch Write untuk atomic update)
+                if (qty <= 0) return alert("Qty minimal 1");
+                const batch = window.fb.writeBatch(window.db);
+                
+                // Cek Stok
+                let enough = true;
+                const missing = [];
+                product.recipe.forEach(r => {
+                    const item = inventory.find(i => i.id === r.itemId);
+                    if(!item || item.stock < (r.qty * qty)) { enough = false; missing.push(item?.name); }
+                });
+
+                if(!enough) return alert("Stok kurang: " + missing.join(", "));
+
+                try {
+                    // 1. Kurangi Inventory
+                    product.recipe.forEach(r => {
+                        const item = inventory.find(i => i.id === r.itemId);
+                        const itemRef = window.fb.doc(window.db, "inventory", r.itemId);
+                        batch.update(itemRef, { stock: item.stock - (r.qty * qty) });
+                    });
+
+                    // 2. Hitung HPP & Revenue
+                    const hpp = product.recipe.reduce((acc, r) => {
+                        const i = inventory.find(x => x.id === r.itemId);
+                        return acc + (i.price * r.qty);
+                    }, 0) + (product.overhead || 0);
+
+                    // 3. Buat Log
+                    const logRef = window.fb.doc(window.fb.collection(window.db, "usageLog"));
+                    batch.set(logRef, {
+                        date: new Date().toISOString(),
+                        itemId: product.id,
+                        itemName: `[Produksi] ${product.name}`,
+                        amount: qty,
+                        unit: 'porsi',
+                        reason: 'Produksi',
+                        cost: hpp * qty,
+                        revenue: (product.sellingPrice || 0) * qty
+                    });
+
+                    await batch.commit();
+                    alert(`Berhasil memproduksi ${qty} ${product.name}`);
+                } catch(e) { alert("Gagal produksi: " + e.message); }
+            };
+
+            // RENDER
+            if (!user) return <LoginScreen onLogin={handleLogin} />;
+            if (loading) return <div className="h-screen flex items-center justify-center text-emerald-600 animate-pulse">Menghubungkan ke Database...</div>;
+
+            const menus = [
                 { id: 'dashboard', label: 'Dashboard', icon: 'layout-grid', role: 'all' },
-                { id: 'list', label: 'Stok Bahan', icon: 'package', role: 'all' },
+                { id: 'inventory', label: 'Stok Bahan', icon: 'package', role: 'all' },
                 { id: 'products', label: 'Menu Resep', icon: 'coffee', role: 'all' },
-                { id: 'usage', label: 'Catat Pakai', icon: 'clipboard-minus', role: 'all' },
-                { id: 'restock', label: 'Restock', icon: 'shopping-cart', role: 'all' },
-                { id: 'hpp', label: 'Kalkulator', icon: 'calculator', role: 'all' },
-                { id: 'finance', label: 'Keuangan', icon: 'banknote', role: 'owner' },
+                { id: 'finance', label: 'Keuangan', icon: 'banknote', role: 'owner' }
             ];
 
             return (
-                <div className="flex h-screen bg-slate-50 overflow-hidden">
-                    {/* SIDEBAR */}
-                    <div className="w-64 bg-slate-900 text-white flex flex-col hidden md:flex shrink-0">
-                        <div className="p-6 font-bold text-xl border-b border-slate-800 flex gap-3 items-center">
-                            <div className="bg-emerald-500 p-1.5 rounded-lg"><Icon name="chef-hat" size={20}/></div> 
-                            KitchenPro
+                <div className="flex h-screen bg-slate-50">
+                    {/* Sidebar */}
+                    <div className="w-64 bg-slate-900 text-white flex flex-col hidden md:flex">
+                        <div className="p-6 border-b border-slate-800 flex items-center gap-3">
+                            <div className="bg-emerald-500 p-1.5 rounded-lg"><Icon name="chef-hat" size={24}/></div>
+                            <span className="font-bold text-lg">KitchenPro</span>
                         </div>
-                        <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar">
-                            {menuItems.filter(m=>m.role==='all'||m.role===user.role).map(m => (
-                                <button key={m.id} onClick={()=>setView(m.id)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-medium ${view===m.id?'bg-emerald-600 text-white shadow-lg shadow-emerald-900/50':'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
-                                    <Icon name={m.icon} size={20}/> {m.label}
+                        <nav className="flex-1 p-4 space-y-2">
+                            {menus.filter(m => m.role === 'all' || m.role === user.role).map(m => (
+                                <button key={m.id} onClick={()=>setView(m.id)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view===m.id ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/50' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}>
+                                    <Icon name={m.icon} size={20}/> <span className="font-medium">{m.label}</span>
                                 </button>
                             ))}
                         </nav>
                         <div className="p-4 border-t border-slate-800">
-                            <div className="px-4 py-2 mb-2 text-xs text-slate-500 uppercase font-bold">User: {user.name}</div>
-                            <button onClick={()=>{setUser(null); localStorage.removeItem('fnb_user_role');}} className="w-full flex items-center gap-2 text-rose-400 hover:bg-rose-900/20 px-4 py-3 rounded-xl transition"><Icon name="log-out" size={20}/> Logout</button>
+                            <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 text-rose-400 hover:bg-rose-500/10 rounded-xl transition-all"><Icon name="log-out"/> Logout</button>
                         </div>
                     </div>
-                    
-                    {/* MAIN CONTENT */}
-                    <main className="flex-1 overflow-auto bg-slate-50 relative">
-                        {/* Mobile Header */}
-                        <div className="md:hidden p-4 bg-white border-b flex justify-between items-center sticky top-0 z-20 shadow-sm">
-                            <div className="font-bold text-slate-800 flex items-center gap-2"><Icon name="chef-hat" className="text-emerald-600"/> KitchenPro</div>
-                            <div className="flex gap-2">
-                                <button onClick={()=>setView('dashboard')} className="p-2 bg-slate-100 rounded-lg"><Icon name="layout-grid"/></button>
-                                <button onClick={()=>setView('list')} className="p-2 bg-slate-100 rounded-lg"><Icon name="package"/></button>
-                                <button onClick={()=>{setUser(null); localStorage.removeItem('fnb_user_role');}} className="p-2 bg-rose-50 text-rose-500 rounded-lg"><Icon name="log-out"/></button>
+
+                    {/* Main Content */}
+                    <main className="flex-1 overflow-auto p-4 md:p-8">
+                        <header className="flex justify-between items-center mb-8">
+                            <div>
+                                <h2 className="text-2xl font-bold text-slate-800 capitalize">{menus.find(m=>m.id===view)?.label}</h2>
+                                <p className="text-slate-500 text-sm">Selamat datang kembali, {user.name}</p>
                             </div>
-                        </div>
+                            <div className="flex gap-2">
+                                <span className="bg-white px-3 py-1 rounded-full border text-xs font-bold text-emerald-600 flex items-center gap-2 shadow-sm animate-pulse"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Online Connected</span>
+                            </div>
+                        </header>
 
-                        <div className="p-4 md:p-8 max-w-7xl mx-auto pb-24">
-                            <header className="mb-8">
-                                <h2 className="text-2xl font-bold text-slate-800 capitalize flex items-center gap-3">
-                                    <span className="bg-white p-2 rounded-xl border border-slate-100 shadow-sm text-slate-500">
-                                        <Icon name={menuItems.find(m=>m.id===view)?.icon || 'grid'}/>
-                                    </span>
-                                    {menuItems.find(m=>m.id===view)?.label}
-                                </h2>
-                            </header>
-
-                            {/* DASHBOARD */}
-                            {view === 'dashboard' && <DashboardView inventory={inventory} products={products} logs={logs} />}
-
-                            {/* STOK BAHAN */}
-                            {view === 'list' && (
-                                <Card>
-                                    <div className="flex justify-between items-center mb-6">
-                                        <div className="relative w-64">
-                                            <Icon name="search" className="absolute left-3 top-2.5 text-gray-400" size={18}/>
-                                            <input type="text" placeholder="Cari bahan..." className="pl-10 pr-4 py-2 border rounded-lg w-full text-sm"/>
-                                        </div>
-                                        {user.role==='owner'&&<Button onClick={()=>{const n=prompt("Nama Bahan:");if(n)window.fb.addDoc(window.fb.collection(window.db,"inventory"),{name:n,stock:0,unit:'kg',price:0,minStock:5,category:'Umum'})}}><Icon name="plus"/> Bahan Baru</Button>}
-                                    </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-sm text-left">
-                                            <thead className="bg-slate-50 text-slate-500 uppercase font-bold text-xs">
-                                                <tr><th className="p-4 rounded-l-xl">Nama Bahan</th><th className="p-4">Stok Fisik</th><th className="p-4">Harga/Unit</th><th className="p-4 text-center">Status</th><th className="p-4 rounded-r-xl text-right">Aksi</th></tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100">
-                                                {inventory.map(i=>(
-                                                    <tr key={i.id} className="hover:bg-slate-50/50 transition">
-                                                        <td className="p-4 font-bold text-slate-700">{i.name}</td>
-                                                        <td className="p-4"><span className={`font-bold text-lg ${i.stock<=i.minStock?'text-rose-600':'text-slate-600'}`}>{i.stock}</span> <span className="text-xs text-gray-400">{i.unit}</span></td>
-                                                        <td className="p-4 text-slate-600">{formatRupiah(i.price)}</td>
-                                                        <td className="p-4 text-center">{i.stock<=i.minStock ? <Badge type="danger">Low</Badge> : <Badge type="success">Aman</Badge>}</td>
-                                                        <td className="p-4 flex justify-end gap-2">
-                                                            <button onClick={()=>{const s=prompt(`Update Stok ${i.name} (+/-):`,0);if(s)window.fb.updateDoc(window.fb.doc(window.db,"inventory",i.id),{stock:Number(i.stock)+Number(s)})}} className="text-blue-600 bg-blue-50 p-2 rounded-lg hover:bg-blue-100 transition"><Icon name="edit-2" size={16}/></button>
-                                                            {user.role==='owner'&&<button onClick={()=>confirm(`Hapus ${i.name}?`)&&window.fb.deleteDoc(window.fb.doc(window.db,"inventory",i.id))} className="text-rose-600 bg-rose-50 p-2 rounded-lg hover:bg-rose-100 transition"><Icon name="trash-2" size={16}/></button>}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </Card>
-                            )}
-                            
-                            {/* MENU RESEP */}
-                            {view === 'products' && (
-                                <div className="space-y-6">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                        {products.map(p=>{
-                                            const hpp = p.recipe.reduce((a,b)=>{const i=inventory.find(x=>x.id===b.itemId); return a+(i?i.price*b.qty:0)},0) + (p.overhead||0);
-                                            const profit = p.sellingPrice - hpp;
-                                            return (
-                                                <Card key={p.id} className="relative overflow-hidden group hover:shadow-md transition-all">
-                                                    <div className="flex justify-between items-start mb-4">
-                                                        <div className="font-bold text-lg text-slate-800">{p.name}</div>
-                                                        <button onClick={()=>confirm(`Hapus menu ${p.name}?`)&&window.fb.deleteDoc(window.fb.doc(window.db,"products",p.id))} className="text-gray-300 hover:text-rose-500"><Icon name="trash-2" size={16}/></button>
-                                                    </div>
-                                                    <div className="space-y-3 mb-6">
-                                                        <div className="flex justify-between text-sm border-b pb-2">
-                                                            <span className="text-slate-500">Harga Jual</span>
-                                                            <span className="font-bold text-emerald-600">{formatRupiah(p.sellingPrice)}</span>
-                                                        </div>
-                                                        <div className="flex justify-between text-sm border-b pb-2">
-                                                            <span className="text-slate-500">HPP (Modal)</span>
-                                                            <span className="font-bold text-slate-600">{formatRupiah(hpp)}</span>
-                                                        </div>
-                                                        <div className="flex justify-between text-sm">
-                                                            <span className="text-slate-500">Profit</span>
-                                                            <span className={`font-bold ${profit>0?'text-blue-600':'text-rose-600'}`}>{formatRupiah(profit)}</span>
-                                                        </div>
-                                                    </div>
-                                                    <button onClick={()=>{
-                                                        if(confirm(`Produksi 1 porsi ${p.name}? Stok bahan akan berkurang.`)){
-                                                            const batch=window.fb.writeBatch(window.db);
-                                                            // Cek stok dulu
-                                                            let enough = true;
-                                                            p.recipe.forEach(r=>{const i=inventory.find(x=>x.id===r.itemId); if(!i || i.stock < r.qty) enough=false; });
-                                                            if(!enough) return alert("Stok bahan tidak cukup!");
-
-                                                            p.recipe.forEach(r=>{const i=inventory.find(x=>x.id===r.itemId);if(i)batch.update(window.fb.doc(window.db,"inventory",r.itemId),{stock:i.stock-r.qty})});
-                                                            window.fb.addDoc(window.fb.collection(window.db,"usageLog"),{
-                                                                date:new Date().toISOString(),itemName:`[Produksi] ${p.name}`,itemId:p.id,
-                                                                amount:1,unit:'porsi',reason:'Produksi',cost:hpp,revenue:p.sellingPrice
-                                                            });
-                                                            batch.commit().then(()=>alert("Produksi Berhasil!"));
-                                                        }
-                                                    }} className="w-full bg-slate-900 text-white py-2.5 rounded-xl font-bold hover:bg-emerald-600 transition flex items-center justify-center gap-2">
-                                                        <Icon name="chef-hat" size={18}/> Produksi 1 Porsi
-                                                    </button>
-                                                </Card>
-                                            );
-                                        })}
-                                        
-                                        {user.role==='owner'&& (
-                                            <button onClick={()=>{
-                                                const n=prompt("Nama Menu Baru:");
-                                                if(n) {
-                                                    const price = prompt("Harga Jual:", 0);
-                                                    window.fb.addDoc(window.fb.collection(window.db,"products"),{name:n,sellingPrice:Number(price),recipe:[],overhead:0});
-                                                }
-                                            }} className="border-2 border-dashed border-slate-300 rounded-2xl flex flex-col items-center justify-center font-bold text-slate-400 p-6 hover:border-emerald-400 hover:text-emerald-500 hover:bg-emerald-50 transition gap-2 h-[280px]">
-                                                <div className="bg-white p-4 rounded-full shadow-sm"><Icon name="plus" size={32}/></div>
-                                                Tambah Menu Baru
-                                            </button>
-                                        )}
-                                    </div>
-                                    <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-sm text-blue-800 flex items-center gap-3">
-                                        <Icon name="info"/>
-                                        <span>Untuk mengedit resep (bahan baku), saat ini silakan gunakan fitur HPP Calculator untuk simulasi, lalu update data manual di database atau hubungi developer untuk fitur Edit Resep UI lanjutan.</span>
-                                    </div>
+                        {view === 'dashboard' && <DashboardView inventory={inventory} products={products} usageLog={usageLog} />}
+                        {view === 'inventory' && <InventoryView inventory={inventory} user={user} />}
+                        {view === 'products' && (
+                            <div className="space-y-6">
+                                <ProductsView products={products} inventory={inventory} />
+                                {/* Quick Produce Button for Products */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    {products.map(p => (
+                                        <Card key={p.id}>
+                                            <div className="font-bold">{p.name}</div>
+                                            <div className="text-sm text-gray-500 mb-2">Stok: Cukup</div>
+                                            <Button onClick={()=>handleProduce(p, 1)} className="w-full">Produksi 1 Porsi</Button>
+                                        </Card>
+                                    ))}
                                 </div>
-                            )}
-
-                            {/* CATAT PAKAI */}
-                            {view === 'usage' && (
-                                <div className="grid md:grid-cols-2 gap-6">
-                                    <Card>
-                                        <h3 className="font-bold mb-6 text-slate-800 flex items-center gap-2"><Icon name="clipboard-edit"/> Catat Pemakaian Manual</h3>
-                                        <form onSubmit={e=>{
-                                            e.preventDefault();
-                                            const fd=new FormData(e.target);
-                                            const i=inventory.find(x=>x.id===fd.get('itemId'));
-                                            if(!i)return;
-                                            const q=Number(fd.get('qty'));
-                                            if(i.stock < q) return alert("Stok tidak cukup!");
-                                            
-                                            window.fb.updateDoc(window.fb.doc(window.db,"inventory",i.id),{stock:i.stock-q});
-                                            window.fb.addDoc(window.fb.collection(window.db,"usageLog"),{
-                                                date:new Date().toISOString(),itemName:i.name,itemId:i.id,
-                                                amount:q,unit:i.unit,reason:fd.get('reason'),cost:q*i.price
-                                            });
-                                            e.target.reset();
-                                            alert("Tercatat!");
-                                        }} className="space-y-4">
-                                            <div>
-                                                <label className="text-sm font-bold text-slate-600 mb-1 block">Pilih Bahan</label>
-                                                <select name="itemId" className="w-full border p-2.5 rounded-xl bg-white" required>
-                                                    <option value="">-- Pilih --</option>
-                                                    {inventory.map(i=><option key={i.id} value={i.id}>{i.name} (Sisa: {i.stock})</option>)}
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-bold text-slate-600 mb-1 block">Jumlah Pakai</label>
-                                                <input name="qty" type="number" step="any" placeholder="0" className="w-full border p-2.5 rounded-xl" required />
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-bold text-slate-600 mb-1 block">Alasan</label>
-                                                <select name="reason" className="w-full border p-2.5 rounded-xl bg-white">
-                                                    <option>Rusak / Basi</option>
-                                                    <option>Tumpah</option>
-                                                    <option>Tester / Sampling</option>
-                                                    <option>Lainnya</option>
-                                                </select>
-                                            </div>
-                                            <Button type="submit" className="w-full justify-center py-3 mt-2">Simpan Log</Button>
-                                        </form>
-                                    </Card>
-                                    <Card className="max-h-[500px] overflow-y-auto">
-                                        <h3 className="font-bold mb-4 text-slate-800">Riwayat Log Terakhir</h3>
-                                        <div className="space-y-3">
-                                            {logs.slice(0,10).map(l=>(
-                                                <div key={l.id} className="border-b border-dashed pb-3 last:border-0">
-                                                    <div className="flex justify-between items-start">
-                                                        <div>
-                                                            <div className="font-bold text-slate-700">{l.itemName}</div>
-                                                            <div className="text-xs text-gray-400">{formatDate(l.date)}</div>
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <div className="font-bold text-rose-500">-{l.amount} {l.unit}</div>
-                                                            <Badge>{l.reason}</Badge>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </Card>
-                                </div>
-                            )}
-
-                            {/* FITUR TAMBAHAN */}
-                            {view === 'finance' && <FinanceView logs={logs} requests={requests} products={products} />}
-                            {view === 'restock' && <RestockView inventory={inventory} requests={requests} user={user} />}
-                            {view === 'hpp' && <HPPCalculator inventory={inventory} />}
-
-                        </div>
+                            </div>
+                        )}
+                        {view === 'finance' && <FinanceView usageLog={usageLog} />}
                     </main>
                 </div>
             );
